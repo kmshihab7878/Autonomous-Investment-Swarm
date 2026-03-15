@@ -93,7 +93,7 @@ class MarketDataService:
         orderbook = self.provider.parse_orderbook_response(data.orderbook_raw, data.symbol)
         if orderbook is None:
             return 0.5
-        return self.provider.compute_liquidity_score(orderbook, notional)
+        return float(self.provider.compute_liquidity_score(orderbook, notional))
 
     def _fetch_safe(self, tool_name: str, params: dict[str, Any]) -> dict[str, Any] | None:
         """Fetch data, returning None on error."""

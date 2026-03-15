@@ -151,7 +151,7 @@ class PortfolioSyncService:
             # Update SharedMemory as fraction of NAV
             if self.memory.latest_snapshot and self.memory.latest_snapshot.nav > 0:
                 self.memory.latest_pnl = total_pnl / self.memory.latest_snapshot.nav
-            return total_pnl
+            return float(total_pnl)
 
         except Exception as e:
             logger.error(

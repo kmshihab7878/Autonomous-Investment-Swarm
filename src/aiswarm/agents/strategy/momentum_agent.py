@@ -29,7 +29,7 @@ def _sma(candles: list[OHLCV], period: int) -> float | None:
     if len(candles) < period:
         return None
     closes = [c.close for c in candles[-period:]]
-    return sum(closes) / len(closes)
+    return float(sum(closes) / len(closes))
 
 
 def _trend_consistency(candles: list[OHLCV], period: int) -> float:

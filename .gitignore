@@ -46,8 +46,8 @@ Thumbs.db
 logs/
 *.log
 
-# Data / databases
-data/
+# Data / databases (root-level only, not src/aiswarm/data/)
+/data/
 *.db
 *.sqlite
 *.sqlite3
