@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from aiswarm.utils.logging import get_logger
+from aiswarm.utils.secrets import get_secrets_provider
 
 logger = get_logger(__name__)
 
@@ -14,7 +15,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _get_api_key() -> str:
-    key = os.environ.get("AIS_API_KEY", "")
+    key = get_secrets_provider().get_secret("AIS_API_KEY") or ""
     if not key or key == "change-me-to-a-secure-random-string":
         return ""
     return key

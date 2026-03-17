@@ -28,9 +28,13 @@ from aiswarm.monitoring.reconciliation import ReconciliationLoop
 from aiswarm.orchestration.coordinator import Coordinator
 from aiswarm.orchestration.memory import SharedMemory
 from aiswarm.resilience.shutdown import GracefulShutdown
+from aiswarm.risk.stop_loss import StopLossMonitor
 from aiswarm.session.manager import SessionManager
 from aiswarm.types.market import Signal
+from aiswarm.types.risk import RiskEvent, RiskSeverity
+from aiswarm.utils.ids import new_id
 from aiswarm.utils.logging import get_logger
+from aiswarm.utils.time import utc_now
 
 logger = get_logger(__name__)
 
@@ -87,6 +91,7 @@ class TradingLoop:
         market_data: MarketDataService,
         config: LoopConfig | None = None,
         alert_dispatcher: AlertDispatcher | None = None,
+        stop_loss_monitor: StopLossMonitor | None = None,
     ) -> None:
         self.coordinator = coordinator
         self.live_executor = live_executor
@@ -104,6 +109,7 @@ class TradingLoop:
         self.state = LoopState()
         self.provider = AsterDataProvider()
         self.alert_dispatcher = alert_dispatcher or AlertDispatcher()
+        self.stop_loss_monitor = stop_loss_monitor
 
     def run(self) -> LoopState:
         """Run the trading loop until shutdown or session end.
@@ -236,6 +242,14 @@ class TradingLoop:
             except Exception as e:
                 m.LOOP_ERRORS.labels(component="portfolio_sync").inc()
                 errors.append(f"portfolio_sync: {e}")
+
+        # 1b. Per-position stop-loss check (after portfolio sync)
+        if self.stop_loss_monitor is not None and self.memory.latest_snapshot:
+            try:
+                self._run_stop_loss_check(errors)
+            except Exception as e:
+                m.LOOP_ERRORS.labels(component="stop_loss").inc()
+                errors.append(f"stop_loss: {e}")
 
         # 2. Check control state (G-002: Redis-backed)
         if not self._check_control_state():
@@ -372,6 +386,55 @@ class TradingLoop:
                 )
 
         return signals
+
+    def _run_stop_loss_check(self, errors: list[str]) -> None:
+        """Scan positions for stop-loss breaches and submit closing orders.
+
+        Stop-loss orders bypass the normal signal/coordinator flow and are
+        submitted directly to the executor. Each trigger is recorded as a
+        risk event in SharedMemory and as a Prometheus counter increment.
+        """
+        assert self.stop_loss_monitor is not None
+        assert self.memory.latest_snapshot is not None
+
+        close_orders = self.stop_loss_monitor.check_positions(self.memory.latest_snapshot)
+
+        for order in close_orders:
+            try:
+                result = self.live_executor.submit_order(order)
+                m.STOP_LOSS_TRIGGERS.labels(symbol=order.symbol).inc()
+                if result.success:
+                    self.state.total_orders_submitted += 1
+                    m.ORDERS_SUBMITTED.labels(symbol=order.symbol, side=order.side.value).inc()
+                    logger.warning(
+                        "Stop-loss order submitted",
+                        extra={
+                            "extra_json": {
+                                "order_id": order.order_id,
+                                "symbol": order.symbol,
+                                "side": order.side.value,
+                                "quantity": order.quantity,
+                                "exchange_id": result.exchange_order_id,
+                            }
+                        },
+                    )
+                else:
+                    errors.append(f"stop_loss_submit_{order.symbol}: {result.message}")
+
+                # Record risk event regardless of submission outcome
+                self.memory.record_risk_event(
+                    RiskEvent(
+                        event_id=new_id("rev"),
+                        severity=RiskSeverity.WARNING,
+                        rule="per_position_stop_loss",
+                        message=order.thesis,
+                        symbol=order.symbol,
+                        strategy=order.strategy,
+                        created_at=utc_now(),
+                    )
+                )
+            except Exception as e:
+                errors.append(f"stop_loss_submit_{order.symbol}: {e}")
 
     def _run_reconciliation(self) -> bool:
         """Run position reconciliation against exchange state."""

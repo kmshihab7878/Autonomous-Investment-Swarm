@@ -8,3 +8,4 @@ risk:
   max_rolling_drawdown: 0.05
   min_liquidity_score: 0.50
   max_concentration_hhi: 0.18
+  max_position_loss_pct: 0.05

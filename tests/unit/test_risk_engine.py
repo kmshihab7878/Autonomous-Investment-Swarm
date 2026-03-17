@@ -239,13 +239,14 @@ class TestHMACTokens:
 
     def test_reject_malformed_token(self) -> None:
         assert not verify_risk_token("not:valid", "order123")
-        assert not verify_risk_token("a:b:c:d", "order123")
+        assert not verify_risk_token("a:b:c:d:e", "order123")
 
     def test_token_format(self) -> None:
         token = sign_risk_token("order123")
         parts = token.split(":")
-        assert len(parts) == 3
+        assert len(parts) == 4
         assert parts[0] == "order123"
+        assert parts[2] == "v1"  # default key_id
 
 
 # --- RiskEngine Integration Tests ---

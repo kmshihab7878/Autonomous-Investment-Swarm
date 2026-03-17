@@ -4,10 +4,15 @@ Controls the trading session lifecycle:
 PENDING_REVIEW -> APPROVED -> ACTIVE -> ENDED -> PENDING_REVIEW
 
 Trading is only allowed when a session is ACTIVE.
+
+Session state is persisted to Redis (key ``ais:session:state``) when a
+``redis_client`` is provided so that state survives process restarts.
+Falls back to in-memory only when Redis is unavailable.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -18,6 +23,8 @@ from aiswarm.utils.logging import get_logger
 from aiswarm.utils.time import utc_now
 
 logger = get_logger(__name__)
+
+REDIS_SESSION_KEY = "ais:session:state"
 
 _VALID_TRANSITIONS: dict[SessionState, set[SessionState]] = {
     SessionState.PENDING_REVIEW: {SessionState.APPROVED},
@@ -35,11 +42,14 @@ class SessionManager:
         event_store: EventStore,
         default_duration_hours: int = 8,
         schedule: dict[str, Any] | None = None,
+        redis_client: Any | None = None,
     ) -> None:
         self.event_store = event_store
         self.default_duration_hours = default_duration_hours
         self.schedule = schedule
+        self._redis = redis_client
         self._current: TradingSession | None = None
+        self._restore_from_redis()
 
     @property
     def current_session(self) -> TradingSession | None:
@@ -51,6 +61,79 @@ class SessionManager:
         if self._current is None:
             return False
         return self._current.state == SessionState.ACTIVE
+
+    # --- Redis persistence --------------------------------------------------
+
+    def _session_to_dict(self, session: TradingSession) -> dict[str, Any]:
+        """Serialize a TradingSession to a JSON-safe dictionary."""
+        return {
+            "session_id": session.session_id,
+            "state": session.state.value,
+            "scheduled_start": session.scheduled_start.isoformat(),
+            "scheduled_end": session.scheduled_end.isoformat(),
+            "actual_start": session.actual_start.isoformat() if session.actual_start else None,
+            "actual_end": session.actual_end.isoformat() if session.actual_end else None,
+            "approved_by": session.approved_by,
+            "approval_notes": session.approval_notes,
+            "created_at": session.created_at.isoformat(),
+            "total_fills": session.total_fills,
+            "total_pnl": session.total_pnl,
+        }
+
+    def _dict_to_session(self, data: dict[str, Any]) -> TradingSession:
+        """Deserialize a dictionary back to a TradingSession."""
+        return TradingSession(
+            session_id=data["session_id"],
+            state=SessionState(data["state"]),
+            scheduled_start=datetime.fromisoformat(data["scheduled_start"]),
+            scheduled_end=datetime.fromisoformat(data["scheduled_end"]),
+            actual_start=(
+                datetime.fromisoformat(data["actual_start"]) if data.get("actual_start") else None
+            ),
+            actual_end=(
+                datetime.fromisoformat(data["actual_end"]) if data.get("actual_end") else None
+            ),
+            approved_by=data.get("approved_by"),
+            approval_notes=data.get("approval_notes", ""),
+            created_at=datetime.fromisoformat(data["created_at"]),
+            total_fills=data.get("total_fills", 0),
+            total_pnl=data.get("total_pnl", 0.0),
+        )
+
+    def _persist_to_redis(self) -> None:
+        """Write current session state to Redis. Fails silently."""
+        if self._redis is None or self._current is None:
+            return
+        try:
+            payload = json.dumps(self._session_to_dict(self._current))
+            self._redis.set(REDIS_SESSION_KEY, payload)
+        except Exception:
+            logger.error("Failed to persist session state to Redis")
+
+    def _restore_from_redis(self) -> None:
+        """Attempt to restore session state from Redis on startup."""
+        if self._redis is None:
+            return
+        try:
+            raw: str | None = self._redis.get(REDIS_SESSION_KEY)
+            if raw is None:
+                logger.info("No session state found in Redis — starting fresh")
+                return
+            data = json.loads(raw)
+            self._current = self._dict_to_session(data)
+            logger.info(
+                "Session state restored from Redis",
+                extra={
+                    "extra_json": {
+                        "session_id": self._current.session_id,
+                        "state": self._current.state.value,
+                    }
+                },
+            )
+        except Exception:
+            logger.error("Failed to restore session state from Redis — starting fresh")
+
+    # --- Lifecycle transitions -----------------------------------------------
 
     def _transition(self, new_state: SessionState) -> TradingSession:
         """Apply a state transition with validation."""
@@ -86,6 +169,7 @@ class SessionManager:
                 }
             },
         )
+        self._persist_to_redis()
         return self._current
 
     def start_session(
@@ -119,6 +203,7 @@ class SessionManager:
             "Session created",
             extra={"extra_json": {"session_id": session.session_id}},
         )
+        self._persist_to_redis()
         return session
 
     def approve_session(self, operator: str, notes: str = "") -> TradingSession:

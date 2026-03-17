@@ -38,6 +38,9 @@ KILL_SWITCH_TRIGGERS = Counter(
     "ais_kill_switch_triggers_total", "Number of kill switch activations"
 )
 RISK_REJECTIONS = Counter("ais_risk_rejections_total", "Risk validation rejections", ["guard"])
+STOP_LOSS_TRIGGERS = Counter(
+    "ais_stop_loss_triggers_total", "Per-position stop-loss closings", ["symbol"]
+)
 
 # Mandate metrics
 MANDATE_PNL = Gauge("ais_mandate_pnl", "Per-mandate P&L", ["mandate_id"])
@@ -64,3 +67,30 @@ LOOP_CYCLE_DURATION = Histogram("ais_loop_cycle_seconds", "Trading loop cycle du
 LOOP_ERRORS = Counter("ais_loop_errors_total", "Trading loop errors", ["component"])
 LOOP_HEARTBEAT = Gauge("ais_loop_heartbeat_epoch", "Last heartbeat timestamp (epoch)")
 LOOP_HALTED = Gauge("ais_loop_halted", "Whether the loop is halted (1=halted, 0=running)")
+
+# Circuit breaker metrics
+CIRCUIT_BREAKER_STATE = Gauge(
+    "ais_circuit_breaker_state",
+    "Circuit breaker state (0=closed, 1=open, 2=half_open)",
+    ["name"],
+)
+CIRCUIT_BREAKER_FAILURES = Counter(
+    "ais_circuit_breaker_failures_total",
+    "Total circuit breaker failures",
+    ["name"],
+)
+CIRCUIT_BREAKER_SUCCESSES = Counter(
+    "ais_circuit_breaker_successes_total",
+    "Total circuit breaker successes",
+    ["name"],
+)
+CIRCUIT_BREAKER_REJECTIONS = Counter(
+    "ais_circuit_breaker_rejections_total",
+    "Requests rejected by open circuit",
+    ["name"],
+)
+CIRCUIT_BREAKER_TRANSITIONS = Counter(
+    "ais_circuit_breaker_transitions_total",
+    "State transitions",
+    ["name", "from_state", "to_state"],
+)

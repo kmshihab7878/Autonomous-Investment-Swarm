@@ -10,7 +10,6 @@ trading loop can read it each cycle. Fails closed if Redis is unavailable.
 
 from __future__ import annotations
 
-import os
 from enum import Enum
 from typing import Any
 
@@ -18,8 +17,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from aiswarm.api.auth import require_api_key
+from aiswarm.api.rate_limit import require_control_rate_limit, require_general_rate_limit
 from aiswarm.data.providers.aster_config import WHITELISTED_SYMBOLS
 from aiswarm.utils.logging import get_logger
+from aiswarm.utils.secrets import get_secrets_provider
 from aiswarm.utils.time import utc_now
 
 logger = get_logger(__name__)
@@ -44,7 +45,7 @@ def _get_redis() -> Any:
     try:
         import redis
 
-        url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        url = get_secrets_provider().get_secret("REDIS_URL") or "redis://localhost:6379/0"
         client = redis.Redis.from_url(url, decode_responses=True, socket_timeout=2)
         client.ping()
         return client
@@ -157,12 +158,12 @@ class DeleverageRequest(BaseModel):
 # --- Endpoints ---
 
 
-@router.get("/control/mode")
+@router.get("/control/mode", dependencies=[Depends(require_general_rate_limit)])
 def get_mode(_: str = Depends(require_api_key)) -> dict[str, str]:
     return {"default_mode": "paper"}
 
 
-@router.get("/control/status")
+@router.get("/control/status", dependencies=[Depends(require_general_rate_limit)])
 def get_status(_: str = Depends(require_api_key)) -> dict[str, Any]:
     """Get current system control state."""
     return {
@@ -174,7 +175,7 @@ def get_status(_: str = Depends(require_api_key)) -> dict[str, Any]:
     }
 
 
-@router.post("/control/pause")
+@router.post("/control/pause", dependencies=[Depends(require_control_rate_limit)])
 def pause_trading(
     req: PauseRequest,
     _: str = Depends(require_api_key),
@@ -192,7 +193,7 @@ def pause_trading(
     }
 
 
-@router.post("/control/resume")
+@router.post("/control/resume", dependencies=[Depends(require_control_rate_limit)])
 def resume_trading(_: str = Depends(require_api_key)) -> dict[str, Any]:
     """Resume the coordinator loop after a pause."""
     if control_state.state == SystemState.KILLED:
@@ -209,7 +210,7 @@ def resume_trading(_: str = Depends(require_api_key)) -> dict[str, Any]:
     }
 
 
-@router.post("/control/kill-switch")
+@router.post("/control/kill-switch", dependencies=[Depends(require_control_rate_limit)])
 def trigger_kill_switch(
     req: KillSwitchRequest,
     _: str = Depends(require_api_key),
@@ -241,7 +242,7 @@ def trigger_kill_switch(
     }
 
 
-@router.post("/control/cancel-all")
+@router.post("/control/cancel-all", dependencies=[Depends(require_control_rate_limit)])
 def cancel_all_orders(
     req: CancelAllRequest,
     _: str = Depends(require_api_key),
@@ -270,7 +271,7 @@ def cancel_all_orders(
     }
 
 
-@router.post("/control/deleverage")
+@router.post("/control/deleverage", dependencies=[Depends(require_control_rate_limit)])
 def force_deleverage(
     req: DeleverageRequest,
     _: str = Depends(require_api_key),

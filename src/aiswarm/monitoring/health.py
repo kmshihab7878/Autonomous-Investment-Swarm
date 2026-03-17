@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 from aiswarm.utils.logging import get_logger
+from aiswarm.utils.secrets import get_secrets_provider
 from aiswarm.utils.time import utc_now
 
 logger = get_logger(__name__)
@@ -39,7 +39,7 @@ def _check_redis() -> str:
     try:
         import redis
 
-        url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        url = get_secrets_provider().get_secret("REDIS_URL") or "redis://localhost:6379/0"
         client = redis.Redis.from_url(url, socket_timeout=2, decode_responses=True)
         client.ping()
         return "connected"
@@ -49,7 +49,7 @@ def _check_redis() -> str:
 
 def _check_database() -> str:
     try:
-        db_path = os.environ.get("AIS_DB_PATH", "data/ais_events.db")
+        db_path = get_secrets_provider().get_secret("AIS_DB_PATH") or "data/ais_events.db"
         if Path(db_path).exists():
             return "connected"
         return "not_initialized"

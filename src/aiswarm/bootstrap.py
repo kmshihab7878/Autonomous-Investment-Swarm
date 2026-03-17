@@ -35,7 +35,7 @@ from aiswarm.loop.trading_loop import TradingLoop
 from aiswarm.mandates.models import MandateRiskBudget
 from aiswarm.mandates.registry import MandateRegistry
 from aiswarm.mandates.validator import MandateValidator
-from aiswarm.monitoring.alerts import AlertDispatcher
+from aiswarm.monitoring.alerts import AlertChannel, AlertDispatcher
 from aiswarm.monitoring.reconciliation import PositionReconciler, ReconciliationLoop
 from aiswarm.orchestration.arbitration import WeightedArbitration
 from aiswarm.orchestration.coordinator import Coordinator
@@ -43,8 +43,15 @@ from aiswarm.orchestration.memory import SharedMemory
 from aiswarm.portfolio.allocator import PortfolioAllocator
 from aiswarm.resilience.shutdown import GracefulShutdown
 from aiswarm.risk.limits import RiskEngine
+from aiswarm.risk.stop_loss import StopLossMonitor
 from aiswarm.session.manager import SessionManager
 from aiswarm.utils.logging import get_logger
+from aiswarm.utils.secrets import (
+    SecretsProvider,
+    create_secrets_provider,
+    get_secrets_provider,
+    set_secrets_provider,
+)
 
 logger = get_logger(__name__)
 
@@ -96,6 +103,14 @@ def build_risk_engine(config: dict[str, Any]) -> RiskEngine:
         max_rolling_drawdown=risk.get("max_rolling_drawdown", 0.05),
         max_leverage=risk.get("max_leverage", 1.0),
         min_liquidity_score=risk.get("min_liquidity_score", 0.50),
+    )
+
+
+def build_stop_loss_monitor(config: dict[str, Any]) -> StopLossMonitor:
+    """Build StopLossMonitor from risk config section."""
+    risk = config.get("risk", {})
+    return StopLossMonitor(
+        max_position_loss_pct=risk.get("max_position_loss_pct", 0.05),
     )
 
 
@@ -190,10 +205,30 @@ def resolve_execution_mode(config: dict[str, Any]) -> ExecutionMode:
     return ExecutionMode.PAPER
 
 
+def _get_redis_client() -> Any:
+    """Get a Redis client. Returns None if Redis is not available.
+
+    Mirrors the pattern in ``routes_control._get_redis`` — fail-open so
+    the system can still operate without Redis (in-memory fallback).
+    """
+    try:
+        import redis
+
+        secrets = get_secrets_provider()
+        url = secrets.get_secret("REDIS_URL") or "redis://localhost:6379/0"
+        client = redis.Redis.from_url(url, decode_responses=True, socket_timeout=2)
+        client.ping()
+        return client
+    except Exception:
+        logger.warning("Redis unavailable — session state will be in-memory only")
+        return None
+
+
 def bootstrap_from_config(
     config_dir: str | Path = "config/",
     gateway: MCPGateway | None = None,
     db_path: str | None = None,
+    secrets_provider: SecretsProvider | None = None,
 ) -> TradingLoop:
     """Build a fully wired TradingLoop from YAML configuration.
 
@@ -201,10 +236,17 @@ def bootstrap_from_config(
         config_dir: Path to config directory containing YAML files.
         gateway: Optional MCPGateway override (uses MockMCPGateway if None).
         db_path: Optional EventStore database path.
+        secrets_provider: Optional SecretsProvider override.  When ``None``,
+            ``create_secrets_provider()`` is called to auto-detect the
+            appropriate backend from environment variables.
 
     Returns:
         A ready-to-run TradingLoop instance.
     """
+    # Initialize secrets provider before anything else reads secrets
+    sp = secrets_provider or create_secrets_provider()
+    set_secrets_provider(sp)
+
     config = load_config(config_dir)
     logger.info(
         "Configuration loaded",
@@ -212,7 +254,8 @@ def bootstrap_from_config(
     )
 
     # Core infrastructure
-    db_path = db_path or os.environ.get("AIS_DB_PATH", str(Path("data") / "ais_events.db"))
+    secrets = get_secrets_provider()
+    db_path = db_path or secrets.get_secret("AIS_DB_PATH") or str(Path("data") / "ais_events.db")
     event_store = EventStore(db_path)
     memory = SharedMemory()
 
@@ -223,9 +266,20 @@ def bootstrap_from_config(
     gateway = gateway or _build_gateway(mode)
 
     # Executor stack
-    aster_config = AsterConfig.from_env() if mode == ExecutionMode.LIVE else None
+    aster_config = (
+        AsterConfig.from_env(secrets_provider=secrets) if mode == ExecutionMode.LIVE else None
+    )
     executor = AsterExecutor(config=aster_config, mode=mode)
     order_store = OrderStore(event_store)
+
+    # Crash recovery: rebuild in-memory order state from persisted events
+    restored_count = order_store.restore_from_events()
+    if restored_count > 0:
+        logger.warning(
+            "Restored potentially-orphaned orders from previous session",
+            extra={"extra_json": {"restored_orders": restored_count}},
+        )
+
     live_executor = LiveOrderExecutor(executor, gateway, order_store)
 
     # Services
@@ -245,20 +299,45 @@ def bootstrap_from_config(
 
     # Risk
     risk_engine = build_risk_engine(config)
+    stop_loss_monitor = build_stop_loss_monitor(config)
 
-    # Session
+    # Log HMAC key rotation status
+    if secrets.get_secret("AIS_RISK_HMAC_SECRET_PREVIOUS"):
+        logger.warning(
+            "HMAC key rotation active — previous key configured",
+            extra={
+                "extra_json": {
+                    "key_id": secrets.get_secret("AIS_RISK_HMAC_KEY_ID") or "v1",
+                }
+            },
+        )
+
+    # Inject executor into kill switch for self-enforcing cancellations.
+    # Done here (post-construction) to break the circular dependency between
+    # RiskEngine/KillSwitch and LiveOrderExecutor.
+    risk_engine.kill_switch.set_executor(live_executor)
+
+    # Session (with Redis persistence for live-mode restart safety)
     session_cfg = config.get("session", {})
+    redis_client = _get_redis_client()
     session_manager = SessionManager(
         event_store,
         default_duration_hours=session_cfg.get("default_duration_hours", 8),
+        redis_client=redis_client,
     )
 
-    # Alerting (G-003)
+    # Also give the kill switch a Redis client for trigger notifications
+    if redis_client is not None:
+        risk_engine.kill_switch.set_redis_client(redis_client)
+
+    # Alerting (G-003) — multi-channel support
     alert_cfg = config.get("alerting", {})
+    alert_channels = _build_alert_channels(alert_cfg)
     alert_dispatcher = AlertDispatcher(
         webhook_url=alert_cfg.get("webhook_url", ""),
         severity_filter=alert_cfg.get("severity_filter", "warning"),
         enabled=alert_cfg.get("enabled", False),
+        channels=alert_channels or None,
     )
 
     # Restore checkpoint (G-007)
@@ -286,12 +365,13 @@ def bootstrap_from_config(
         staging_enabled=config.get("staging", {}).get("enabled", False),
     )
 
-    # Reconciliation
+    # Reconciliation — surgical cancel for mismatched symbols only
     reconciler = PositionReconciler()
     recon_loop = ReconciliationLoop(
         reconciler=reconciler,
         event_store=event_store,
         pause_callback=lambda: _pause_on_mismatch(live_executor, config),
+        mismatch_callback=lambda syms: _surgical_cancel_on_mismatch(live_executor, syms),
     )
 
     # Shutdown with checkpoint
@@ -309,6 +389,7 @@ def bootstrap_from_config(
                 "rolling_drawdown": memory.rolling_drawdown,
             }
         )
+        order_store.persist_snapshot()
         logger.info("Checkpoint saved on shutdown")
 
     shutdown = GracefulShutdown(checkpoint_fn=_checkpoint)
@@ -338,6 +419,7 @@ def bootstrap_from_config(
         market_data=market_data,
         config=loop_config,
         alert_dispatcher=alert_dispatcher,
+        stop_loss_monitor=stop_loss_monitor,
     )
 
     # Auto-start session in paper/shadow mode (no operator approval needed)
@@ -366,20 +448,21 @@ def _build_gateway(mode: ExecutionMode) -> MCPGateway:
 
     - PAPER: MockMCPGateway (simulated responses)
     - SHADOW/LIVE: AsterMCPGateway connecting to the MCP server
-      configured via AIS_MCP_SERVER_URL env var.
+      configured via AIS_MCP_SERVER_URL (env var or secrets provider).
     """
     if mode == ExecutionMode.PAPER:
         logger.info("Using MockMCPGateway (paper mode)")
         return MockMCPGateway()
 
-    server_url = os.environ.get("AIS_MCP_SERVER_URL", "")
+    secrets = get_secrets_provider()
+    server_url = secrets.get_secret("AIS_MCP_SERVER_URL") or ""
     if not server_url:
         raise RuntimeError(
             f"AIS_MCP_SERVER_URL must be set for {mode.value} mode. "
             "Set it to the Aster DEX MCP server endpoint."
         )
 
-    aster_cfg = AsterConfig.from_env()
+    aster_cfg = AsterConfig.from_env(secrets_provider=secrets)
     gw = AsterMCPGateway(
         server_url=server_url,
         timeout=float(aster_cfg.request_timeout_seconds),
@@ -413,8 +496,64 @@ def _restore_checkpoint(event_store: EventStore, memory: SharedMemory) -> None:
     )
 
 
+def _build_alert_channels(alert_cfg: dict[str, Any]) -> list[AlertChannel]:
+    """Build AlertChannel instances from the alerting config section.
+
+    Resolves ``${ENV_VAR}`` references in channel URLs so that secrets are
+    never hard-coded in YAML config files.  Channels with empty/unresolved
+    URLs are silently skipped.
+    """
+    raw_channels: list[dict[str, Any]] = alert_cfg.get("alert_channels", [])
+    channels: list[AlertChannel] = []
+    secrets = get_secrets_provider()
+
+    for ch in raw_channels:
+        url = ch.get("url", "")
+
+        # Resolve ${ENV_VAR} references in the URL via secrets provider
+        if url.startswith("${") and url.endswith("}"):
+            env_var = url[2:-1]
+            url = secrets.get_secret(env_var) or ""
+
+        if not url:
+            continue
+
+        channels.append(
+            AlertChannel(
+                name=ch.get("name", "unnamed"),
+                url=url,
+                format=ch.get("format", "generic"),
+                min_severity=ch.get("min_severity", "low"),
+            )
+        )
+
+    if channels:
+        logger.info(
+            "Alert channels configured",
+            extra={
+                "extra_json": {
+                    "channels": [c.name for c in channels],
+                    "count": len(channels),
+                }
+            },
+        )
+
+    return channels
+
+
 def _pause_on_mismatch(live_executor: LiveOrderExecutor, config: dict[str, Any]) -> None:
-    """Reconciliation mismatch handler: cancel all open orders."""
+    """Reconciliation mismatch handler (nuclear fallback): cancel all open orders."""
     symbols = config.get("symbols", ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
-    logger.warning("Position mismatch detected — cancelling all orders")
+    logger.warning("Position mismatch detected — cancelling ALL orders (nuclear fallback)")
     live_executor.cancel_all(symbols)
+
+
+def _surgical_cancel_on_mismatch(
+    live_executor: LiveOrderExecutor, mismatched_symbols: list[str]
+) -> None:
+    """Reconciliation mismatch handler (surgical): cancel only mismatched symbols."""
+    logger.warning(
+        "Position mismatch detected — surgical cancel for mismatched symbols only",
+        extra={"extra_json": {"mismatched_symbols": mismatched_symbols}},
+    )
+    live_executor.cancel_for_symbols(mismatched_symbols)

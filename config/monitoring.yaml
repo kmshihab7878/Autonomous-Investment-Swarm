@@ -7,3 +7,26 @@ alerting:
   enabled: false
   webhook_url: ""
   severity_filter: "warning"
+
+  # Multi-channel alert routing.  Each channel has its own URL, payload
+  # format, and minimum severity gate.  Channels are independent: one
+  # failure does not block delivery to others.
+  #
+  # Supported formats:
+  #   generic — plain JSON: {severity, message, timestamp, context}
+  #   slack   — Slack Block Kit payload with rich formatting
+  #
+  # Severity levels (ascending): low, medium, high, critical
+  #   low      → maps to INFO
+  #   medium   → maps to WARNING
+  #   high     → maps to ERROR
+  #   critical → maps to CRITICAL
+  alert_channels:
+    - name: "slack-trading"
+      url: "${AIS_SLACK_WEBHOOK_URL}"
+      format: "slack"
+      min_severity: "high"
+    - name: "generic-all"
+      url: "${AIS_ALERT_WEBHOOK_URL}"
+      format: "generic"
+      min_severity: "low"

@@ -44,6 +44,13 @@ class CircuitStats:
     total_rejections: int
 
 
+_STATE_VALUE = {
+    CircuitState.CLOSED: 0,
+    CircuitState.OPEN: 1,
+    CircuitState.HALF_OPEN: 2,
+}
+
+
 class CircuitBreaker:
     """Thread-safe circuit breaker for external service calls.
 
@@ -81,6 +88,30 @@ class CircuitBreaker:
         self._total_rejections = 0
         self._lock = threading.Lock()
 
+        # Set initial state gauge
+        self._emit_state_gauge(CircuitState.CLOSED)
+
+    # --- Prometheus helpers (lazy import to avoid circular deps) ----------
+
+    def _emit_state_gauge(self, state: CircuitState) -> None:
+        """Update the Prometheus state gauge for this breaker."""
+        from aiswarm.monitoring import metrics as m
+
+        m.CIRCUIT_BREAKER_STATE.labels(name=self.name).set(_STATE_VALUE[state])
+
+    def _emit_transition(self, from_state: CircuitState, to_state: CircuitState) -> None:
+        """Record a state transition in Prometheus."""
+        from aiswarm.monitoring import metrics as m
+
+        self._emit_state_gauge(to_state)
+        m.CIRCUIT_BREAKER_TRANSITIONS.labels(
+            name=self.name,
+            from_state=from_state.value,
+            to_state=to_state.value,
+        ).inc()
+
+    # --- Public API -------------------------------------------------------
+
     @property
     def state(self) -> CircuitState:
         with self._lock:
@@ -100,16 +131,23 @@ class CircuitBreaker:
 
             # OPEN
             self._total_rejections += 1
+            from aiswarm.monitoring import metrics as m
+
+            m.CIRCUIT_BREAKER_REJECTIONS.labels(name=self.name).inc()
             return False
 
     def record_success(self) -> None:
         """Record a successful call."""
+        from aiswarm.monitoring import metrics as m
+
         with self._lock:
             self._success_count += 1
             self._total_calls += 1
             self._last_success_time = time.monotonic()
+            m.CIRCUIT_BREAKER_SUCCESSES.labels(name=self.name).inc()
 
             if self._state == CircuitState.HALF_OPEN:
+                self._emit_transition(CircuitState.HALF_OPEN, CircuitState.CLOSED)
                 self._state = CircuitState.CLOSED
                 self._failure_count = 0
                 logger.info(
@@ -119,12 +157,16 @@ class CircuitBreaker:
 
     def record_failure(self) -> None:
         """Record a failed call."""
+        from aiswarm.monitoring import metrics as m
+
         with self._lock:
             self._failure_count += 1
             self._total_calls += 1
             self._last_failure_time = time.monotonic()
+            m.CIRCUIT_BREAKER_FAILURES.labels(name=self.name).inc()
 
             if self._state == CircuitState.HALF_OPEN:
+                self._emit_transition(CircuitState.HALF_OPEN, CircuitState.OPEN)
                 self._state = CircuitState.OPEN
                 logger.warning(
                     "Circuit breaker re-OPENED (half-open probe failed)",
@@ -133,6 +175,7 @@ class CircuitBreaker:
             elif (
                 self._state == CircuitState.CLOSED and self._failure_count >= self.failure_threshold
             ):
+                self._emit_transition(CircuitState.CLOSED, CircuitState.OPEN)
                 self._state = CircuitState.OPEN
                 logger.warning(
                     "Circuit breaker OPENED",
@@ -148,8 +191,11 @@ class CircuitBreaker:
     def reset(self) -> None:
         """Manually reset the breaker to CLOSED."""
         with self._lock:
+            old_state = self._state
             self._state = CircuitState.CLOSED
             self._failure_count = 0
+            if old_state != CircuitState.CLOSED:
+                self._emit_transition(old_state, CircuitState.CLOSED)
             logger.info(
                 "Circuit breaker manually reset",
                 extra={"extra_json": {"breaker": self.name}},
@@ -177,6 +223,7 @@ class CircuitBreaker:
             and self._last_failure_time is not None
             and (time.monotonic() - self._last_failure_time) >= self.recovery_timeout
         ):
+            self._emit_transition(CircuitState.OPEN, CircuitState.HALF_OPEN)
             self._state = CircuitState.HALF_OPEN
             logger.info(
                 "Circuit breaker HALF_OPEN (recovery timeout elapsed)",

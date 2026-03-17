@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import os
 import time
 from dataclasses import dataclass
 
@@ -16,26 +15,49 @@ from aiswarm.risk.liquidity import LiquidityGuard
 from aiswarm.types.orders import Order, OrderStatus
 from aiswarm.types.portfolio import PortfolioSnapshot
 from aiswarm.utils.logging import get_logger
+from aiswarm.utils.secrets import get_secrets_provider
 
 logger = get_logger(__name__)
 
 TOKEN_TTL_SECONDS = 300  # 5 minutes
 
+# Default key identifier when none is configured via environment.
+_DEFAULT_KEY_ID = "v1"
+
 
 def _hmac_secret() -> str:
-    secret = os.environ.get("AIS_RISK_HMAC_SECRET", "")
+    """Return the current (primary) HMAC secret. Fails closed if unset."""
+    secret = get_secrets_provider().get_secret("AIS_RISK_HMAC_SECRET") or ""
     if not secret:
         raise RuntimeError(
-            "AIS_RISK_HMAC_SECRET environment variable is not set. "
+            "AIS_RISK_HMAC_SECRET is not set (checked env vars and secrets provider). "
             "Risk token signing requires an explicit secret — no fallback is allowed."
         )
     return secret
 
 
+def _hmac_secret_previous() -> str | None:
+    """Return the previous HMAC secret for key rotation, or None if not configured."""
+    return get_secrets_provider().get_secret("AIS_RISK_HMAC_SECRET_PREVIOUS") or None
+
+
+def _hmac_key_id() -> str:
+    """Return the key identifier for the current HMAC secret."""
+    return get_secrets_provider().get_secret("AIS_RISK_HMAC_KEY_ID") or _DEFAULT_KEY_ID
+
+
 def sign_risk_token(order_id: str) -> str:
-    """Create an HMAC-signed, time-bound risk approval token."""
+    """Create an HMAC-signed, time-bound risk approval token.
+
+    Token format: ``{order_id}:{timestamp}:{key_id}:{signature}``
+
+    Always signs with the current (primary) key.  The ``key_id`` field
+    makes the token self-identifying so verification can select the
+    correct key during a rotation window.
+    """
     timestamp = str(int(time.time()))
-    payload = f"{order_id}:{timestamp}"
+    key_id = _hmac_key_id()
+    payload = f"{order_id}:{timestamp}:{key_id}"
     sig = hmac.new(
         _hmac_secret().encode(),
         payload.encode(),
@@ -44,26 +66,64 @@ def sign_risk_token(order_id: str) -> str:
     return f"{payload}:{sig}"
 
 
+def _verify_with_secret(
+    tok_order_id: str,
+    timestamp_str: str,
+    key_id: str,
+    sig: str,
+    secret: str,
+) -> bool:
+    """Check HMAC signature against a specific secret."""
+    payload = f"{tok_order_id}:{timestamp_str}:{key_id}"
+    expected_sig = hmac.new(
+        secret.encode(),
+        payload.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(sig, expected_sig)
+
+
 def verify_risk_token(token: str, order_id: str) -> bool:
-    """Verify that a risk approval token is valid and not expired."""
+    """Verify that a risk approval token is valid and not expired.
+
+    Tries the current HMAC key first.  If verification fails and a
+    previous key is configured (``AIS_RISK_HMAC_SECRET_PREVIOUS``),
+    retries with the previous key so tokens issued before a key
+    rotation can still be honoured within their TTL window.
+    """
     try:
         parts = token.split(":")
-        if len(parts) != 3:
+        if len(parts) != 4:
             return False
-        tok_order_id, timestamp_str, sig = parts
+        tok_order_id, timestamp_str, key_id, sig = parts
         if tok_order_id != order_id:
             return False
-        expected_sig = hmac.new(
-            _hmac_secret().encode(),
-            f"{tok_order_id}:{timestamp_str}".encode(),
-            hashlib.sha256,
-        ).hexdigest()
-        if not hmac.compare_digest(sig, expected_sig):
-            return False
+
+        # TTL check (shared across both keys)
         elapsed = time.time() - int(timestamp_str)
         if elapsed > TOKEN_TTL_SECONDS or elapsed < 0:
             return False
-        return True
+
+        # Try current key
+        if _verify_with_secret(tok_order_id, timestamp_str, key_id, sig, _hmac_secret()):
+            return True
+
+        # Try previous key if configured (rotation window)
+        previous = _hmac_secret_previous()
+        if previous is not None:
+            if _verify_with_secret(tok_order_id, timestamp_str, key_id, sig, previous):
+                logger.warning(
+                    "Risk token verified with previous HMAC key — rotation in progress",
+                    extra={
+                        "extra_json": {
+                            "order_id": order_id,
+                            "key_id": key_id,
+                        }
+                    },
+                )
+                return True
+
+        return False
     except (ValueError, TypeError):
         return False
 

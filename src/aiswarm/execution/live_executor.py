@@ -170,6 +170,57 @@ class LiveOrderExecutor:
                 message=f"Cancel failed: {e}",
             )
 
+    def cancel_for_symbols(self, symbols: list[str]) -> list[SubmissionResult]:
+        """Surgical cancel — cancel orders only for the specified symbols.
+
+        Unlike ``cancel_all`` which is a nuclear option across all whitelisted
+        symbols, this method targets specific symbols (e.g. those flagged by
+        reconciliation mismatches).
+        """
+        results: list[SubmissionResult] = []
+
+        for symbol in symbols:
+            for venue in (Venue.FUTURES, Venue.SPOT):
+                try:
+                    params = self.executor.prepare_cancel_all(symbol, venue)
+                    tool_name = params.pop("tool")
+                    self.gateway.call_tool(tool_name, params)
+                    results.append(
+                        SubmissionResult(
+                            success=True,
+                            order_id=f"cancel_symbol_{symbol}_{venue.value}",
+                            exchange_order_id=None,
+                            message=f"Surgical cancel {venue.value} for {symbol}",
+                        )
+                    )
+                except Exception as e:
+                    results.append(
+                        SubmissionResult(
+                            success=False,
+                            order_id=f"cancel_symbol_{symbol}_{venue.value}",
+                            exchange_order_id=None,
+                            message=f"Surgical cancel failed: {e}",
+                        )
+                    )
+
+            # Mark only this symbol's open orders as cancelled
+            for record in self.order_store.get_open_orders_for_symbol(symbol):
+                self.order_store.record_cancel(
+                    record.order.order_id,
+                    reason=f"surgical_reconciliation_cancel:{symbol}",
+                )
+
+        logger.info(
+            "Surgical cancel completed",
+            extra={
+                "extra_json": {
+                    "symbols": symbols,
+                    "results_count": len(results),
+                }
+            },
+        )
+        return results
+
     def cancel_all(self, symbols: list[str] | None = None) -> list[SubmissionResult]:
         """Emergency cancel all orders across symbols."""
         from aiswarm.data.providers.aster_config import WHITELISTED_SYMBOLS

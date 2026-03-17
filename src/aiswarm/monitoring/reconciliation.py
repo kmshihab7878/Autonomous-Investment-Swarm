@@ -55,6 +55,15 @@ class ReconciliationResult:
     timestamp: datetime | None = None
 
 
+_MISMATCH_STATUSES = frozenset(
+    {
+        ReconciliationStatus.MISMATCH,
+        ReconciliationStatus.MISSING_INTERNAL,
+        ReconciliationStatus.MISSING_EXCHANGE,
+    }
+)
+
+
 @dataclass(frozen=True)
 class ReconciliationReport:
     """Full reconciliation report across all checks."""
@@ -65,12 +74,26 @@ class ReconciliationReport:
     mismatches: int
     results: tuple[ReconciliationResult, ...]
 
+    @property
+    def mismatched_symbols(self) -> list[str]:
+        """Return deduplicated, sorted list of symbols with mismatches.
+
+        Excludes non-symbol entries like 'PORTFOLIO' (balance checks)
+        since those are not actionable at the per-symbol order level.
+        """
+        seen: set[str] = set()
+        for r in self.results:
+            if r.status in _MISMATCH_STATUSES and r.symbol != "PORTFOLIO":
+                seen.add(r.symbol)
+        return sorted(seen)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "passed": self.passed,
             "total_checks": self.total_checks,
             "mismatches": self.mismatches,
+            "mismatched_symbols": self.mismatched_symbols,
             "results": [
                 {
                     "status": r.status.value,
@@ -310,10 +333,15 @@ class PositionReconciler:
 
 
 class ReconciliationLoop:
-    """Automated periodic reconciliation with auto-pause on mismatch.
+    """Automated periodic reconciliation with surgical mismatch handling.
 
     Wraps PositionReconciler for continuous monitoring. When a mismatch
-    is detected, calls the provided pause_callback to halt trading.
+    is detected:
+    - If ``mismatch_callback`` is provided, calls it with the list of
+      mismatched symbols so only those symbols' orders are cancelled
+      (surgical reconciliation).
+    - Falls back to ``pause_callback`` (nuclear: no symbol info) for
+      backward compatibility.
     """
 
     def __init__(
@@ -322,11 +350,13 @@ class ReconciliationLoop:
         event_store: EventStore,
         pause_callback: Callable[[], None],
         mismatch_threshold: int = 0,
+        mismatch_callback: Callable[[list[str]], None] | None = None,
     ) -> None:
         self.reconciler = reconciler
         self.event_store = event_store
         self.pause_callback = pause_callback
         self.mismatch_threshold = mismatch_threshold
+        self.mismatch_callback = mismatch_callback
         self.latest_report: ReconciliationReport | None = None
 
     def on_fill(
@@ -364,17 +394,38 @@ class ReconciliationLoop:
         return report
 
     def _handle_mismatch(self, report: ReconciliationReport) -> None:
-        """Pause trading and log the mismatch event."""
-        logger.warning(
-            "Reconciliation mismatch — pausing trading",
-            extra={
-                "extra_json": {
-                    "mismatches": report.mismatches,
-                    "total_checks": report.total_checks,
-                }
-            },
-        )
-        self.pause_callback()
+        """Handle reconciliation mismatch — surgical or nuclear.
+
+        If a ``mismatch_callback`` is configured, delegates to it with the
+        specific mismatched symbols (surgical). Otherwise falls back to the
+        legacy ``pause_callback`` which cancels everything (nuclear).
+        """
+        mismatched = report.mismatched_symbols
+
+        if self.mismatch_callback and mismatched:
+            logger.warning(
+                "Reconciliation mismatch — surgical cancel for mismatched symbols",
+                extra={
+                    "extra_json": {
+                        "mismatched_symbols": mismatched,
+                        "mismatches": report.mismatches,
+                        "total_checks": report.total_checks,
+                    }
+                },
+            )
+            self.mismatch_callback(mismatched)
+        else:
+            logger.warning(
+                "Reconciliation mismatch — pausing trading (nuclear)",
+                extra={
+                    "extra_json": {
+                        "mismatches": report.mismatches,
+                        "total_checks": report.total_checks,
+                    }
+                },
+            )
+            self.pause_callback()
+
         self.event_store.append(
             "reconciliation_pause",
             report.to_dict(),

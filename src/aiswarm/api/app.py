@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from aiswarm import __version__
+from aiswarm.api.rate_limit import require_general_rate_limit
 from aiswarm.api.routes_control import router as control_router
 from aiswarm.api.routes_health import router as health_router
 from aiswarm.api.routes_mandates import router as mandates_router
@@ -25,12 +26,19 @@ def dashboard() -> FileResponse:
     return FileResponse(str(_static_dir / "dashboard.html"))
 
 
-# Public routes
+# Public routes — no rate limiting (health is for monitoring, metrics for Prometheus)
 app.include_router(health_router, tags=["health"])
 app.include_router(metrics_router, tags=["metrics"])
 
-# Authenticated routes
+# Authenticated routes — control router has per-endpoint rate limits (see routes_control.py),
+# other authenticated routers get the general rate limit (60 req/min per IP).
 app.include_router(control_router, tags=["control"])
-app.include_router(reports_router, tags=["reports"])
-app.include_router(mandates_router, tags=["mandates"])
-app.include_router(session_router, tags=["session"])
+app.include_router(
+    reports_router, tags=["reports"], dependencies=[Depends(require_general_rate_limit)]
+)
+app.include_router(
+    mandates_router, tags=["mandates"], dependencies=[Depends(require_general_rate_limit)]
+)
+app.include_router(
+    session_router, tags=["session"], dependencies=[Depends(require_general_rate_limit)]
+)

@@ -3,6 +3,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aiswarm.utils.secrets import SecretsProvider
 
 
 class Venue(str, Enum):
@@ -21,9 +25,18 @@ class AsterConfig:
     max_retries: int = 3
 
     @classmethod
-    def from_env(cls) -> AsterConfig:
+    def from_env(cls, secrets_provider: SecretsProvider | None = None) -> AsterConfig:
+        """Build config from environment or a secrets provider.
+
+        When ``secrets_provider`` is ``None``, falls back to reading
+        ``os.environ`` directly (preserving backward compatibility).
+        """
+        if secrets_provider is not None:
+            account_id = secrets_provider.get_secret("ASTER_ACCOUNT_ID") or ""
+        else:
+            account_id = os.environ.get("ASTER_ACCOUNT_ID", "")
         return cls(
-            account_id=os.environ.get("ASTER_ACCOUNT_ID", ""),
+            account_id=account_id,
         )
 
     @property

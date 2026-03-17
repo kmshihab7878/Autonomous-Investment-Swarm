@@ -3,12 +3,17 @@
 G-003: Replaces the 2-line stub with a real AlertDispatcher that posts
 JSON payloads to a configurable webhook URL.
 
+Multi-channel support: dispatches to multiple notification channels with
+per-channel severity filtering and format customisation (generic, Slack).
+
 Severity filter: only dispatches alerts at or above the configured level.
 Graceful failure: network errors are logged but never crash the loop.
+Channel failures are isolated — one channel failing does not block others.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any
 
@@ -29,14 +34,122 @@ class AlertSeverity(IntEnum):
 
 SEVERITY_MAP: dict[str, AlertSeverity] = {
     "info": AlertSeverity.INFO,
+    "low": AlertSeverity.INFO,
     "warning": AlertSeverity.WARNING,
+    "medium": AlertSeverity.WARNING,
     "error": AlertSeverity.ERROR,
+    "high": AlertSeverity.ERROR,
     "critical": AlertSeverity.CRITICAL,
 }
 
+# Emoji indicators for Slack severity rendering
+_SLACK_SEVERITY_EMOJI: dict[AlertSeverity, str] = {
+    AlertSeverity.INFO: ":information_source:",
+    AlertSeverity.WARNING: ":warning:",
+    AlertSeverity.ERROR: ":rotating_light:",
+    AlertSeverity.CRITICAL: ":fire:",
+}
+
+
+@dataclass(frozen=True)
+class AlertChannel:
+    """A single notification channel with its own URL, format, and severity gate."""
+
+    name: str
+    url: str
+    format: str = "generic"  # "generic" or "slack"
+    min_severity: str = "low"
+
+
+def _resolve_severity(label: str) -> AlertSeverity:
+    """Resolve a severity label string to an AlertSeverity enum value."""
+    return SEVERITY_MAP.get(label.lower(), AlertSeverity.WARNING)
+
+
+def _format_generic_payload(
+    message: str,
+    severity: str,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a generic JSON webhook payload."""
+    return {
+        "severity": severity,
+        "message": message,
+        "timestamp": utc_now().isoformat(),
+        "context": context,
+    }
+
+
+def _format_slack_payload(
+    message: str,
+    severity: str,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a Slack-compatible webhook payload with blocks.
+
+    Slack incoming webhooks expect a JSON body with a top-level ``text`` field
+    (used as fallback) and an optional ``blocks`` array for rich formatting.
+    """
+    sev = _resolve_severity(severity)
+    emoji = _SLACK_SEVERITY_EMOJI.get(sev, ":bell:")
+    ts = utc_now().isoformat()
+
+    text = f"{emoji} *[{severity.upper()}]* {message}"
+
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"AIS Alert — {severity.upper()}",
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{emoji} {message}",
+            },
+        },
+    ]
+
+    if context:
+        context_lines = "\n".join(f"• *{k}*: {v}" for k, v in context.items())
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": context_lines,
+                },
+            }
+        )
+
+    blocks.append(
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"Timestamp: {ts}",
+                }
+            ],
+        }
+    )
+
+    return {"text": text, "blocks": blocks}
+
 
 class AlertDispatcher:
-    """Dispatches alerts to a webhook endpoint."""
+    """Dispatches alerts to one or more notification channels.
+
+    Supports two channel formats:
+      - ``generic``: plain JSON payload with severity, message, timestamp, context
+      - ``slack``: Slack Block Kit payload with rich formatting
+
+    Backward-compatible: if constructed with a single ``webhook_url`` (old style),
+    it is automatically wrapped as a generic channel.
+    """
 
     def __init__(
         self,
@@ -44,11 +157,36 @@ class AlertDispatcher:
         severity_filter: str = "warning",
         enabled: bool = True,
         timeout: float = 5.0,
+        channels: list[AlertChannel] | None = None,
     ) -> None:
-        self.webhook_url = webhook_url
-        self.min_severity = SEVERITY_MAP.get(severity_filter.lower(), AlertSeverity.WARNING)
-        self.enabled = enabled and bool(webhook_url)
         self.timeout = timeout
+        self._channels: list[AlertChannel] = []
+
+        if channels:
+            self._channels = list(channels)
+
+        # Backward compatibility: single webhook_url wraps into a generic channel
+        if webhook_url and not channels:
+            self._channels = [
+                AlertChannel(
+                    name="default",
+                    url=webhook_url,
+                    format="generic",
+                    min_severity=severity_filter,
+                )
+            ]
+
+        # Preserve the old .enabled semantics for callers that check it
+        self.enabled = enabled and len(self._channels) > 0
+
+        # Legacy attributes for backward compatibility
+        self.webhook_url = webhook_url
+        self.min_severity = _resolve_severity(severity_filter)
+
+    @property
+    def channels(self) -> list[AlertChannel]:
+        """Return a copy of the registered channels."""
+        return list(self._channels)
 
     def send(
         self,
@@ -56,45 +194,83 @@ class AlertDispatcher:
         severity: str = "warning",
         context: dict[str, Any] | None = None,
     ) -> bool:
-        """Send an alert if it meets the severity threshold.
+        """Send an alert to all channels whose severity threshold is met.
 
-        Returns True if the alert was dispatched (or filtered), False on error.
-        Never raises — failures are logged.
+        Returns True if all targeted channels succeeded (or the alert was
+        filtered / disabled), False if any channel encountered an error.
+        Never raises — failures are logged and isolated per channel.
         """
-        sev = SEVERITY_MAP.get(severity.lower(), AlertSeverity.WARNING)
-        if sev < self.min_severity:
-            return True
-
-        payload = {
-            "severity": severity,
-            "message": message,
-            "timestamp": utc_now().isoformat(),
-            "context": context or {},
-        }
+        ctx = context or {}
+        sev = _resolve_severity(severity)
 
         if not self.enabled:
+            payload = _format_generic_payload(message, severity, ctx)
             logger.info(
                 "Alert (not dispatched — disabled)",
                 extra={"extra_json": payload},
             )
             return True
 
+        all_ok = True
+        dispatched_any = False
+
+        for channel in self._channels:
+            channel_min = _resolve_severity(channel.min_severity)
+            if sev < channel_min:
+                continue
+
+            dispatched_any = True
+            ok = self._dispatch_to_channel(channel, message, severity, ctx)
+            if not ok:
+                all_ok = False
+
+        if not dispatched_any:
+            # Alert was below all channel thresholds — that is not an error
+            return True
+
+        return all_ok
+
+    def _dispatch_to_channel(
+        self,
+        channel: AlertChannel,
+        message: str,
+        severity: str,
+        context: dict[str, Any],
+    ) -> bool:
+        """Post a payload to a single channel. Never raises."""
+        if channel.format == "slack":
+            payload = _format_slack_payload(message, severity, context)
+        else:
+            payload = _format_generic_payload(message, severity, context)
+
         try:
             resp = httpx.post(
-                self.webhook_url,
+                channel.url,
                 json=payload,
                 timeout=self.timeout,
             )
             resp.raise_for_status()
             logger.info(
                 "Alert dispatched",
-                extra={"extra_json": {"severity": severity, "status": resp.status_code}},
+                extra={
+                    "extra_json": {
+                        "channel": channel.name,
+                        "severity": severity,
+                        "status": resp.status_code,
+                    }
+                },
             )
             return True
         except Exception as e:
             logger.error(
                 "Alert dispatch failed",
-                extra={"extra_json": {"error": str(e), "message": message}},
+                extra={
+                    "extra_json": {
+                        "channel": channel.name,
+                        "error": str(e),
+                        "message": message,
+                    }
+                },
             )
             return False
 
