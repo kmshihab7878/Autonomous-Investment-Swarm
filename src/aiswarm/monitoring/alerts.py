@@ -80,6 +80,39 @@ def _format_generic_payload(
     }
 
 
+def _format_alertmanager_payload(
+    message: str,
+    severity: str,
+    context: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build an Alertmanager-compatible alert payload.
+
+    Alertmanager expects a JSON array of alert objects at ``POST /api/v1/alerts``.
+    Each alert has ``labels`` (used for routing/dedup) and ``annotations``
+    (human-readable metadata).
+    """
+    labels: dict[str, str] = {
+        "alertname": "ais_alert",
+        "severity": severity.lower(),
+        "source": "ais",
+    }
+    # Promote symbol/strategy to labels for routing rules
+    if "symbol" in context:
+        labels["symbol"] = str(context["symbol"])
+    if "strategy" in context:
+        labels["strategy"] = str(context["strategy"])
+
+    annotations: dict[str, str] = {
+        "summary": message,
+        "timestamp": utc_now().isoformat(),
+    }
+    for k, v in context.items():
+        if k not in ("symbol", "strategy"):
+            annotations[k] = str(v)
+
+    return [{"labels": labels, "annotations": annotations}]
+
+
 def _format_slack_payload(
     message: str,
     severity: str,
@@ -238,14 +271,19 @@ class AlertDispatcher:
         context: dict[str, Any],
     ) -> bool:
         """Post a payload to a single channel. Never raises."""
-        if channel.format == "slack":
+        if channel.format == "alertmanager":
+            payload = _format_alertmanager_payload(message, severity, context)
+            url = channel.url.rstrip("/") + "/api/v1/alerts"
+        elif channel.format == "slack":
             payload = _format_slack_payload(message, severity, context)
+            url = channel.url
         else:
             payload = _format_generic_payload(message, severity, context)
+            url = channel.url
 
         try:
             resp = httpx.post(
-                channel.url,
+                url,
                 json=payload,
                 timeout=self.timeout,
             )

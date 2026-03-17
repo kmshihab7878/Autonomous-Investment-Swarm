@@ -74,6 +74,8 @@ docker compose up --build
 | `AIS_LOOP_METRICS_PORT` | Loop Prometheus metrics port | Optional (default: 9002) |
 | `AIS_SLACK_WEBHOOK_URL` | Slack alert webhook | Optional (alert dispatch) |
 | `AIS_ALERT_WEBHOOK_URL` | Generic alert webhook | Optional (alert dispatch) |
+| `AIS_ALERTMANAGER_URL` | Alertmanager base URL | Optional (alert dispatch) |
+| `AIS_PUSHGATEWAY_URL` | Prometheus Pushgateway URL | Optional (backtest metrics) |
 
 ## MCP Gateway Modes
 

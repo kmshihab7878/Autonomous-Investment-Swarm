@@ -45,6 +45,7 @@ from aiswarm.resilience.shutdown import GracefulShutdown
 from aiswarm.risk.limits import RiskEngine
 from aiswarm.risk.stop_loss import StopLossMonitor
 from aiswarm.session.manager import SessionManager
+from aiswarm.utils.config_schema import validate_config
 from aiswarm.utils.logging import get_logger
 from aiswarm.utils.secrets import (
     SecretsProvider,
@@ -80,6 +81,10 @@ def load_config(config_dir: str | Path) -> dict[str, Any]:
     env_path = config_dir / f"{env}.yaml"
     if env_path.exists():
         merged.update(load_yaml(env_path))
+
+    # Schema-validate the merged config — catches typos, missing keys,
+    # and invalid values before any component is wired.
+    validate_config(merged)
 
     return merged
 

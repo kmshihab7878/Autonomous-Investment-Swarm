@@ -81,6 +81,20 @@ services:
       - redisdata:/data
     restart: unless-stopped
 
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    ports:
+      - "9091:9091"
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v2.51.0
     ports:
@@ -91,6 +105,7 @@ services:
     depends_on:
       - ais-api
       - ais-loop
+      - pushgateway
     restart: unless-stopped
 
   grafana:

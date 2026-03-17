@@ -19,12 +19,14 @@ Design decisions:
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
 import numpy as np
 
+from aiswarm.monitoring.metrics import push_metrics
 from aiswarm.quant.risk_metrics import compute_risk_metrics
 from aiswarm.types.market import Signal
 from aiswarm.utils.logging import get_logger
@@ -291,7 +293,20 @@ class BacktestEngine:
             # Update final equity point to reflect closed position
             equity_curve[-1] = capital
 
-        return self._compute_results(strategy_name, symbol, candles, capital, equity_curve, trades)
+        result = self._compute_results(
+            strategy_name, symbol, candles, capital, equity_curve, trades
+        )
+
+        # Push metrics to Pushgateway if configured (short-lived process support)
+        gw_url = os.environ.get("AIS_PUSHGATEWAY_URL", "")
+        if gw_url:
+            push_metrics(
+                gw_url,
+                job="ais-backtest",
+                grouping_key={"strategy": strategy_name, "symbol": symbol},
+            )
+
+        return result
 
     # -- private helpers --
 

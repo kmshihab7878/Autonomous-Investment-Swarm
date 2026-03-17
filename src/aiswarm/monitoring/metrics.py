@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import Counter, Gauge, Histogram, push_to_gateway
+from prometheus_client.registry import REGISTRY
+
+from aiswarm.utils.logging import get_logger
+
+_logger = get_logger(__name__)
 
 # Portfolio metrics
 PNL_GAUGE = Gauge("ais_pnl", "Portfolio pnl fraction")
@@ -94,3 +99,46 @@ CIRCUIT_BREAKER_TRANSITIONS = Counter(
     "State transitions",
     ["name", "from_state", "to_state"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Pushgateway support — for short-lived processes (backtest, one-off scripts)
+# ---------------------------------------------------------------------------
+
+
+def push_metrics(
+    gateway_url: str,
+    job: str = "ais",
+    grouping_key: dict[str, str] | None = None,
+) -> bool:
+    """Push all registered metrics to a Prometheus Pushgateway.
+
+    Intended for short-lived processes (backtests, one-off scripts) that
+    terminate before Prometheus can scrape them.
+
+    Args:
+        gateway_url: Pushgateway base URL (e.g. ``http://pushgateway:9091``).
+        job: Job label for the push.
+        grouping_key: Optional extra grouping labels.
+
+    Returns:
+        True on success, False on failure (never raises).
+    """
+    try:
+        push_to_gateway(
+            gateway_url,
+            job=job,
+            registry=REGISTRY,
+            grouping_key=grouping_key or {},
+        )
+        _logger.info(
+            "Metrics pushed to gateway",
+            extra={"extra_json": {"url": gateway_url, "job": job}},
+        )
+        return True
+    except Exception as e:
+        _logger.error(
+            "Failed to push metrics",
+            extra={"extra_json": {"url": gateway_url, "error": str(e)}},
+        )
+        return False
