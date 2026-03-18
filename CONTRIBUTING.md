@@ -22,7 +22,7 @@ pre-commit install
 - **Type checker**: [mypy](https://mypy-lang.org/) (strict mode)
 - **Type hints**: Required on all function signatures
 - **Models**: Pydantic v2 with `frozen=True`
-- **Logging**: structlog (structured JSON)
+- **Logging**: stdlib `logging` with custom `JsonFormatter` (structured JSON)
 
 ## Pull Request Requirements
 

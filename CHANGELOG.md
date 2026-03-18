@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-19
+
+### Added
+- Multi-exchange abstraction layer (Aster, Binance, Coinbase, Bybit, Interactive Brokers)
+- Exchange registry and symbol router for config-driven exchange mapping
+- Backtesting engine with adapters and data loader
+- TradingView webhook integration for signal ingestion
+- Portfolio tracker export (CoinGecko, Zapper, DeBank)
+- Tax export integration (CSV, Koinly, CoinTracker)
+- Session review generator and review models
+- Operations dashboard with tactical ops aesthetic
+- HMAC key rotation with zero-downtime support (`AIS_RISK_HMAC_SECRET_PREVIOUS`, `AIS_RISK_HMAC_KEY_ID`)
+
+### Changed
+- Architecture diagram updated to reflect multi-exchange support
+- Directory tree in README updated to include all modules
+- Coverage badge updated to 89%
+- Copyright year extended to 2026
+- Logging documentation corrected (stdlib logging, not structlog)
+
+### Fixed
+- Bandit and mypy CI pipeline failures
+- Reconciliation test made deterministic for CI
+- Repository hardened for public publishing
+
 ## [1.1.0] - 2025-03-15
 
 ### Added

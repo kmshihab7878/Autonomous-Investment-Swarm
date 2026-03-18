@@ -1,7 +1,7 @@
 # Autonomous Investment Swarm (AIS)
 
 [![CI](https://github.com/kmshihab7878/Financial-Intelligence-Department-FID/actions/workflows/ci.yml/badge.svg)](https://github.com/kmshihab7878/Financial-Intelligence-Department-FID/actions)
-[![Coverage: 86%](https://img.shields.io/badge/coverage-86%25-brightgreen)]()
+[![Coverage: 89%](https://img.shields.io/badge/coverage-89%25-brightgreen)]()
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000)](https://docs.astral.sh/ruff/)
 [![Typed: mypy](https://img.shields.io/badge/typing-mypy-blue)](http://mypy-lang.org/)
@@ -49,7 +49,7 @@ graph TD
     PF --> RK[Risk Engine]
     RK -->|approve / veto| O
     O --> EX[Execution]
-    EX --> BR[Aster DEX / Simulator]
+    EX --> BR[Exchanges / Simulator]
     BR --> MON[Monitoring]
     O <--> MEM[Shared Memory]
     RK <--> MEM
@@ -61,9 +61,12 @@ graph TD
 src/aiswarm/
 ├── agents/         # Strategy agents (momentum, funding rate)
 ├── api/            # FastAPI control plane (auth, routes, Prometheus)
+├── backtest/       # Backtesting engine, adapters, data loader
 ├── bootstrap.py    # Config -> component graph wiring
-├── data/           # EventStore (SQLite), Aster data provider
+├── data/           # EventStore (SQLite), market data providers
+├── exchange/       # Multi-exchange abstraction layer
 ├── execution/      # Order executor, order store, fill tracker
+├── integrations/   # TradingView webhooks, portfolio trackers, tax export
 ├── loop/           # Autonomous trading loop (60s cycle)
 ├── mandates/       # Governance: mandate registry, validator
 ├── monitoring/     # Prometheus metrics, alerts, reconciliation
@@ -71,9 +74,11 @@ src/aiswarm/
 ├── portfolio/      # Allocator, exposure manager
 ├── quant/          # Kelly criterion, risk metrics, drift detection
 ├── resilience/     # Circuit breaker, rate limiter, graceful shutdown
+├── review/         # Session review generator, review models
 ├── risk/           # Risk engine, kill switch, drawdown, leverage checks
 ├── session/        # Session lifecycle management
-└── types/          # Pydantic domain models (Signal, Order, Portfolio)
+├── types/          # Pydantic domain models (Signal, Order, Portfolio)
+└── utils/          # Secrets provider, logging, time utilities
 ```
 
 ## Prerequisites
@@ -121,9 +126,11 @@ AIS uses YAML configuration files in `config/`:
 | `base.yaml` | Core system settings |
 | `risk.yaml` | Risk limits, drawdown thresholds, leverage caps |
 | `execution.yaml` | Execution mode, order routing |
+| `exchanges.yaml` | Multi-exchange routing and credentials |
+| `integrations.yaml` | TradingView, portfolio trackers, tax export |
 | `mandates.yaml` | Strategy mandates, allowed assets, allocation limits |
-| `portfolio.yaml` | Portfolio constraints, rebalancing rules |
 | `monitoring.yaml` | Alerting, metrics, reconciliation |
+| `portfolio.yaml` | Portfolio constraints, rebalancing rules |
 
 ### Required Environment Variables
 
