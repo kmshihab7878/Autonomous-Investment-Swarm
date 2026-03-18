@@ -298,5 +298,6 @@ class RiskEngine:
             return RiskApproval(approved=False, reasons=reasons, order=None)
 
         # All mandate checks passed — use the already-signed order from global validation
-        assert global_result.order is not None
+        if global_result.order is None:
+            raise RuntimeError("global_result passed validation but has no signed order")
         return global_result

@@ -276,7 +276,7 @@ class OrderStore:
         to get all events in insertion order.
         """
         placeholders = ",".join("?" for _ in _ORDER_EVENT_TYPES)
-        query = f"SELECT * FROM events WHERE event_type IN ({placeholders}) ORDER BY id ASC"
+        query = f"SELECT * FROM events WHERE event_type IN ({placeholders}) ORDER BY id ASC"  # nosec B608 — placeholders are literal '?' chars, not user input
         results: list[dict[str, Any]] = []
         with self.event_store._conn() as conn:
             rows = conn.execute(query, _ORDER_EVENT_TYPES).fetchall()

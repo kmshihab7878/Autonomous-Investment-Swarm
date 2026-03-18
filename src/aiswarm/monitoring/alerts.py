@@ -271,6 +271,7 @@ class AlertDispatcher:
         context: dict[str, Any],
     ) -> bool:
         """Post a payload to a single channel. Never raises."""
+        payload: dict[str, Any] | list[dict[str, Any]]
         if channel.format == "alertmanager":
             payload = _format_alertmanager_payload(message, severity, context)
             url = channel.url.rstrip("/") + "/api/v1/alerts"
