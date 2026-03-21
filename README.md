@@ -59,6 +59,9 @@ Paper (simulated), Shadow (read-only), Live (gated). **Same pipeline in all mode
 ### Multi-Exchange
 Unified abstraction across Aster DEX, Binance, Coinbase, Bybit, and Interactive Brokers with config-driven symbol routing via `ExchangeRegistry` and `SymbolRouter`.
 
+### Alpha Intelligence Engine
+Scans trades across all exchanges, profiles top performers, reverse-engineers their strategies, and generates signals from their behavior. Automated edge discovery.
+
 ### Full Observability
 Prometheus metrics, Grafana dashboards, Alertmanager alerts, structured JSON logging, position reconciliation, and append-only SQLite event store for audit trail.
 
@@ -70,11 +73,11 @@ Prometheus metrics, Grafana dashboards, Alertmanager alerts, structured JSON log
 
 | Metric | Value |
 |--------|-------|
-| Source files | 117 Python modules |
-| Lines of code | 13,590 |
-| Test suite | 971 tests (unit + integration) |
+| Source files | 126 Python modules |
+| Lines of code | 15,093 |
+| Test suite | 1,011 tests (unit + integration) |
 | Coverage | 89% |
-| Doc pages | 34 (MkDocs Material) |
+| Doc pages | 35 (MkDocs Material) |
 | Exchanges | 5 (Aster, Binance, Coinbase, Bybit, IB) |
 | CI matrix | Python 3.10, 3.11, 3.12 |
 | Type safety | mypy strict + Pydantic v2 frozen models |
@@ -91,6 +94,7 @@ graph TD
     subgraph Intelligence Layer
         MI[Market Intelligence Agents]
         ST[Strategy Agents]
+        AI[Alpha Intelligence Engine]
     end
 
     subgraph Orchestration Layer
@@ -118,8 +122,10 @@ graph TD
 
     D --> MI
     D --> ST
+    D --> AI
     MI --> ARB
     ST --> ARB
+    AI --> ARB
     ARB --> COORD
     COORD --> PA
     PA --> RE
@@ -150,6 +156,7 @@ src/aiswarm/
 ├── exchange/       # Multi-exchange abstraction layer
 │   └── providers/  # Aster, Binance, Coinbase, Bybit, Interactive Brokers
 ├── execution/      # Order executor, order store, fill tracker
+├── intelligence/   # Alpha Intelligence Engine (scanner, profiler, classifier, follower)
 ├── integrations/   # TradingView webhooks, portfolio trackers, tax export
 ├── loop/           # Autonomous trading loop (60s cycle)
 ├── mandates/       # Governance: mandate registry, validator
@@ -223,8 +230,9 @@ Exchange routing is config-driven via `config/exchanges.yaml`. See [Multi-Exchan
 | **Exchange support** | 5 exchanges, unified abstraction, config-driven routing | 1-2 hardcoded |
 | **Audit trail** | Append-only event store + decision log | None |
 | **Type safety** | mypy strict, Pydantic v2 frozen models, PEP 561 typed | Partial or none |
-| **Testing** | 971 tests (unit + integration), 89% coverage, CI matrix | Minimal |
-| **Documentation** | 34-page MkDocs site with architecture diagrams | README only |
+| **Alpha intelligence** | Scans top traders, profiles strategies, generates follow signals | None |
+| **Testing** | 1,011 tests (unit + integration), 89% coverage, CI matrix | Minimal |
+| **Documentation** | 35-page MkDocs site with architecture diagrams | README only |
 | **API** | FastAPI with OpenAPI/Swagger/ReDoc auto-generated | None or basic |
 
 ## Example Output
@@ -266,7 +274,7 @@ make docs-serve                                             # Local docs at http
 Full documentation at **[kmshihab7878.github.io/Autonomous-Investment-Swarm](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/)**:
 
 - **Getting Started** — [Installation](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/getting-started/installation/), [Quick Start](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/getting-started/quickstart/), [Configuration](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/getting-started/configuration/)
-- **Architecture** — [Overview](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/overview/), [Agent System](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/agents/), [Risk Engine](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/risk-engine/), [Execution](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/execution/), [Exchange Layer](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/exchange-layer/), [Portfolio](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/portfolio/), [Data Model](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/data-model/)
+- **Architecture** — [Overview](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/overview/), [Agent System](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/agents/), [Risk Engine](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/risk-engine/), [Alpha Intelligence](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/intelligence/), [Execution](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/execution/), [Exchange Layer](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/exchange-layer/), [Portfolio](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/portfolio/), [Data Model](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/architecture/data-model/)
 - **Guides** — [Strategy Development](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/guides/strategy-development/), [Backtesting](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/guides/backtesting/), [Multi-Exchange](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/guides/multi-exchange/), [Deployment](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/guides/deployment/), [Monitoring](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/guides/monitoring/)
 - **Reference** — [API](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/reference/api/), [Configuration](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/reference/configuration/), [Metrics](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/reference/metrics/), [Decision Log](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/reference/decision-log/), [Quantitative Tools](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/reference/quant-tools/)
 - **Operations** — [Risk Policy](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/operations/risk-policy/), [Operating Model](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/operations/operating-model/), [Sessions](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/operations/sessions/)

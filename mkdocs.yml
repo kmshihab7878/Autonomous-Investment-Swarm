@@ -106,6 +106,7 @@ nav:
     - Portfolio Engine: architecture/portfolio.md
     - Data Model: architecture/data-model.md
     - Exchange Layer: architecture/exchange-layer.md
+    - Alpha Intelligence: architecture/intelligence.md
   - Guides:
     - Strategy Development: guides/strategy-development.md
     - Backtesting: guides/backtesting.md

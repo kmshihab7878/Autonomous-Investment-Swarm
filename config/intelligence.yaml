@@ -1,0 +1,40 @@
+# Alpha Intelligence Engine Configuration
+#
+# Controls how AIS scans, profiles, and follows top traders
+# across connected exchanges.
+
+intelligence:
+  enabled: true
+
+  # Trade Scanner settings
+  scanner:
+    whale_threshold_usd: 50000      # Minimum notional to flag as whale trade
+    volume_spike_multiplier: 3.0    # Multiplier over recent average to flag as spike
+    scan_interval_seconds: 60       # How often to scan for new trades
+
+  # Leaderboard Tracker settings
+  leaderboard:
+    refresh_interval_seconds: 3600  # How often to snapshot leaderboards (1 hour)
+    max_rank_to_track: 100          # Only track traders in the top N
+    min_snapshots_for_consistency: 5 # Minimum snapshots before classifying as consistent
+
+  # Trader Profiler settings
+  profiler:
+    min_trades_for_profile: 10      # Minimum trades before building a profile
+    profile_refresh_interval: 3600  # How often to rebuild profiles (seconds)
+
+  # Strategy Classifier settings
+  classifier:
+    min_trades_for_classification: 10  # Minimum trades for classification
+    reclassify_interval: 86400         # Re-classify every 24 hours
+
+  # Alpha Follower Agent settings
+  agent:
+    strategy_name: alpha_follower
+    min_tier: notable              # Minimum trader tier to follow (elite, strong, notable, average)
+    max_activity_age_seconds: 3600 # Only follow trades from the last hour
+    max_follow_count: 10           # Maximum trader signals to evaluate per cycle
+    agent_weight: 0.6              # Weight in arbitration (lower than direct strategies)
+
+  # Database
+  db_path: data/ais_alpha.db
