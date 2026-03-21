@@ -5,16 +5,18 @@
 <h1 align="center">Autonomous Investment Swarm</h1>
 
 <p align="center">
-  <strong>Risk-gated autonomous trading with multi-agent orchestration</strong>
+  <strong>Risk-gated autonomous trading with multi-agent orchestration</strong><br>
+  <em>Every order requires cryptographic risk approval. The system fails closed, not open.</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/kmshihab7878/Financial-Intelligence-Department-FID/actions/workflows/ci.yml"><img src="https://github.com/kmshihab7878/Financial-Intelligence-Department-FID/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Docs"></a>
+  <a href="https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/"><img src="https://img.shields.io/badge/docs-mkdocs%20material-blue" alt="Docs"></a>
   <a href="https://codecov.io/gh/kmshihab7878/Financial-Intelligence-Department-FID"><img src="https://img.shields.io/badge/coverage-89%25-brightgreen" alt="Coverage: 89%"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue" alt="Python 3.10+"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue" alt="Python 3.10 | 3.11 | 3.12"></a>
   <a href="https://docs.astral.sh/ruff/"><img src="https://img.shields.io/badge/code%20style-ruff-000000" alt="Ruff"></a>
   <a href="http://mypy-lang.org/"><img src="https://img.shields.io/badge/typing-mypy%20strict-blue" alt="mypy strict"></a>
+  <a href="https://github.com/kmshihab7878/Financial-Intelligence-Department-FID/discussions"><img src="https://img.shields.io/badge/community-discussions-purple" alt="Discussions"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
 </p>
 
@@ -23,7 +25,8 @@
   <a href="https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/getting-started/quickstart/">Quick Start</a> &middot;
   <a href="https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/overview/">Architecture</a> &middot;
   <a href="https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/reference/api/">API Reference</a> &middot;
-  <a href="ROADMAP.md">Roadmap</a>
+  <a href="ROADMAP.md">Roadmap</a> &middot;
+  <a href="https://github.com/kmshihab7878/Financial-Intelligence-Department-FID/discussions">Discussions</a>
 </p>
 
 ---
@@ -39,13 +42,13 @@ Most trading bots execute a single strategy with basic stop-losses. AIS is an **
 <td width="50%">
 
 ### Risk-Gated Execution
-Every order requires an HMAC-signed approval token from the risk engine. No token, no trade. The system **fails closed**, not open.
+Every order requires an HMAC-signed approval token from the risk engine. No token, no trade. The system **fails closed**, not open. Token signing supports zero-downtime key rotation.
 
 ### Multi-Agent Orchestration
-Strategy agents compete to generate signals. Weighted arbitration selects the best signal by confidence, return, and liquidity — preventing conflicting positions.
+Strategy agents compete to generate signals. Weighted arbitration selects the best signal by confidence, expected return, and liquidity — preventing conflicting positions.
 
 ### Mandate Governance
-Strategies operate within explicit mandates that cap allocation, restrict instruments, and enforce position limits.
+Strategies operate within explicit mandates that cap allocation, restrict instruments, and enforce position limits. Mandates are validated before every trading cycle.
 
 </td>
 <td width="50%">
@@ -54,14 +57,28 @@ Strategies operate within explicit mandates that cap allocation, restrict instru
 Paper (simulated), Shadow (read-only), Live (gated). **Same pipeline in all modes** — what you test is what you deploy.
 
 ### Multi-Exchange
-Unified abstraction across Aster DEX, Binance, Coinbase, Bybit, and Interactive Brokers with config-driven symbol routing.
+Unified abstraction across Aster DEX, Binance, Coinbase, Bybit, and Interactive Brokers with config-driven symbol routing via `ExchangeRegistry` and `SymbolRouter`.
 
 ### Full Observability
-Prometheus metrics, Grafana dashboards, Alertmanager alerts, structured JSON logging, position reconciliation, and append-only audit trail.
+Prometheus metrics, Grafana dashboards, Alertmanager alerts, structured JSON logging, position reconciliation, and append-only SQLite event store for audit trail.
 
 </td>
 </tr>
 </table>
+
+## At a Glance
+
+| Metric | Value |
+|--------|-------|
+| Source files | 117 Python modules |
+| Lines of code | 13,590 |
+| Test suite | 971 tests (unit + integration) |
+| Coverage | 89% |
+| Doc pages | 34 (MkDocs Material) |
+| Exchanges | 5 (Aster, Binance, Coinbase, Bybit, IB) |
+| CI matrix | Python 3.10, 3.11, 3.12 |
+| Type safety | mypy strict + Pydantic v2 frozen models |
+| License | Apache 2.0 |
 
 ## Architecture
 
@@ -165,16 +182,22 @@ export AIS_RISK_HMAC_SECRET=$(python -c "import secrets; print(secrets.token_url
 python -m aiswarm --mode paper
 ```
 
-**Docker:**
+**Docker (full stack with monitoring):**
 
 ```bash
 cp .env.example .env
 # Edit .env with required values
 docker compose up --build
-# API: http://localhost:8000 | Prometheus: http://localhost:9090 | Grafana: http://localhost:3000
 ```
 
-See the [full quickstart guide](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/getting-started/quickstart/) for more.
+| Service | Port | Purpose |
+|---------|------|---------|
+| API | [localhost:8000](http://localhost:8000) | FastAPI control plane + [Swagger UI](http://localhost:8000/docs) + [ReDoc](http://localhost:8000/redoc) |
+| Prometheus | [localhost:9090](http://localhost:9090) | Metrics collection |
+| Grafana | [localhost:3000](http://localhost:3000) | Dashboards |
+| Alertmanager | [localhost:9093](http://localhost:9093) | Alert routing |
+
+See the [full quickstart guide](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/getting-started/quickstart/) for detailed walkthrough.
 
 ## Supported Exchanges
 
@@ -192,14 +215,17 @@ Exchange routing is config-driven via `config/exchanges.yaml`. See [Multi-Exchan
 
 | | AIS | Typical Trading Bot |
 |---|---|---|
-| **Risk validation** | HMAC-signed tokens, fail-closed | Basic stop-loss |
+| **Risk validation** | HMAC-signed tokens, fail-closed, key rotation | Basic stop-loss |
 | **Architecture** | Multi-agent weighted arbitration | Single strategy |
 | **Governance** | Mandate system with allocation caps | None |
 | **Execution safety** | 3 modes, same pipeline | Live-only |
-| **Observability** | Prometheus + Grafana + reconciliation | Log files |
-| **Exchange support** | 5 exchanges, unified abstraction | 1-2 hardcoded |
+| **Observability** | Prometheus + Grafana + Alertmanager + reconciliation | Log files |
+| **Exchange support** | 5 exchanges, unified abstraction, config-driven routing | 1-2 hardcoded |
 | **Audit trail** | Append-only event store + decision log | None |
-| **Type safety** | mypy strict, Pydantic v2 frozen models | Partial or none |
+| **Type safety** | mypy strict, Pydantic v2 frozen models, PEP 561 typed | Partial or none |
+| **Testing** | 971 tests (unit + integration), 89% coverage, CI matrix | Minimal |
+| **Documentation** | 34-page MkDocs site with architecture diagrams | README only |
+| **API** | FastAPI with OpenAPI/Swagger/ReDoc auto-generated | None or basic |
 
 ## Example Output
 
@@ -217,33 +243,48 @@ Paper trading loop (structured JSON):
 ## Development
 
 ```bash
-# Tests with coverage
-pytest tests/unit/ -v --cov=src/aiswarm --cov-fail-under=83
+# All quality checks (lint + typecheck + tests with coverage)
+make check
 
-# Lint + format
-ruff check src/ tests/unit/
-ruff format --check src/ tests/unit/
+# Individual commands
+pytest tests/                                              # All tests (unit + integration)
+pytest tests/unit/ --cov=src/aiswarm --cov-fail-under=83   # Unit tests with coverage
+pytest tests/integration/                                   # Integration tests
+ruff check src/ tests/                                      # Lint
+ruff format --check src/ tests/                             # Format check
+mypy src/aiswarm/ --ignore-missing-imports                  # Type check
 
-# Type check
-mypy src/aiswarm/ --ignore-missing-imports
+# Security
+make security                                               # pip-audit + bandit
 
-# All quality checks
-make lint && make typecheck && make test-cov
+# Documentation
+make docs-serve                                             # Local docs at http://localhost:8000
 ```
 
 ## Documentation
 
-Full documentation is available at **[kmshihab7878.github.io/Financial-Intelligence-Department-FID](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/)**, including:
+Full documentation at **[kmshihab7878.github.io/Financial-Intelligence-Department-FID](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/)**:
 
-- [Getting Started](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/getting-started/installation/) — Installation, quickstart, configuration
-- [Architecture](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/overview/) — System design, risk engine, exchange layer
-- [Strategy Development](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/guides/strategy-development/) — Build custom trading agents
-- [API Reference](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/reference/api/) — Control plane endpoints
-- [Deployment](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/guides/deployment/) — Docker, monitoring, production
+- **Getting Started** — [Installation](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/getting-started/installation/), [Quick Start](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/getting-started/quickstart/), [Configuration](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/getting-started/configuration/)
+- **Architecture** — [Overview](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/overview/), [Agent System](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/agents/), [Risk Engine](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/risk-engine/), [Execution](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/execution/), [Exchange Layer](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/exchange-layer/), [Portfolio](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/portfolio/), [Data Model](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/architecture/data-model/)
+- **Guides** — [Strategy Development](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/guides/strategy-development/), [Backtesting](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/guides/backtesting/), [Multi-Exchange](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/guides/multi-exchange/), [Deployment](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/guides/deployment/), [Monitoring](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/guides/monitoring/)
+- **Reference** — [API](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/reference/api/), [Configuration](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/reference/configuration/), [Metrics](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/reference/metrics/), [Decision Log](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/reference/decision-log/), [Quantitative Tools](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/reference/quant-tools/)
+- **Operations** — [Risk Policy](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/operations/risk-policy/), [Operating Model](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/operations/operating-model/), [Sessions](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/operations/sessions/)
+
+## Examples
+
+The [`examples/`](examples/) directory includes:
+
+- `paper_trading.env` — Minimal environment for paper trading
+- `mean_reversion_agent.py` — Example custom strategy agent (Bollinger Band mean reversion)
+
+See the [Strategy Development Guide](https://kmshihab7878.github.io/Financial-Intelligence-Department-FID/guides/strategy-development/) for a complete tutorial on building custom agents.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and PR requirements.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, commit conventions, and PR requirements.
+
+Questions? Start a [discussion](https://github.com/kmshihab7878/Financial-Intelligence-Department-FID/discussions).
 
 ## Security
 
@@ -251,7 +292,7 @@ If you discover a security vulnerability, please report it responsibly. See [SEC
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned milestones and the project direction.
+See [ROADMAP.md](ROADMAP.md) for planned milestones (v1.3 through v2.0) and the research track.
 
 ## License
 
