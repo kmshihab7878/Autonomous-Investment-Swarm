@@ -18,8 +18,7 @@ from typing import Any
 import yaml
 
 from aiswarm.agents.base import Agent
-from aiswarm.agents.market_intelligence.funding_rate_agent import FundingRateAgent
-from aiswarm.agents.strategy.momentum_agent import MomentumAgent
+from aiswarm.agents.registry import build_from_registry, discover_agents
 from aiswarm.data.event_store import EventStore
 from aiswarm.data.providers.aster_config import AsterConfig
 from aiswarm.exchange.provider import ExchangeProvider
@@ -93,12 +92,19 @@ def load_config(config_dir: str | Path) -> dict[str, Any]:
 
 
 def build_agents(config: dict[str, Any]) -> list[Agent]:
-    """Build agent instances from configuration."""
-    agents: list[Agent] = [
-        MomentumAgent(),
-        FundingRateAgent(),
-    ]
-    return agents
+    """Build agent instances from configuration.
+
+    Uses the agent registry for dynamic loading. If ``agents`` is specified
+    in config, only those strategies are activated. Otherwise falls back to
+    the default set (momentum + funding rate).
+    """
+    discover_agents()
+
+    default_strategies = ["momentum_ma_crossover", "funding_rate_contrarian"]
+    strategies = config.get("agents", default_strategies)
+    overrides = config.get("agent_overrides", {})
+
+    return build_from_registry(strategies, overrides=overrides)
 
 
 def build_risk_engine(config: dict[str, Any]) -> RiskEngine:
@@ -189,11 +195,16 @@ def validate_mandate_strategies(
 
 
 def _infer_agent_strategy(agent: Agent) -> str:
-    """Infer the strategy string an agent uses in its Signal output."""
-    if isinstance(agent, MomentumAgent):
-        return "momentum_ma_crossover"
-    if isinstance(agent, FundingRateAgent):
-        return "funding_rate_contrarian"
+    """Infer the strategy string an agent uses in its Signal output.
+
+    Checks the agent registry first (strategy → class mapping), then
+    falls back to the agent_id as a best-effort guess.
+    """
+    from aiswarm.agents.registry import _AGENT_REGISTRY
+
+    for strategy, (cls, _) in _AGENT_REGISTRY.items():
+        if isinstance(agent, cls):
+            return strategy
     return agent.agent_id
 
 

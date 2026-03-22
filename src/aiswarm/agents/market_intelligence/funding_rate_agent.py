@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiswarm.agents.base import Agent
+from aiswarm.agents.registry import register_agent
 from aiswarm.data.providers.aster import AsterDataProvider
 from aiswarm.types.market import MarketRegime, Signal
 from aiswarm.utils.ids import new_id
@@ -29,6 +30,7 @@ CONFIDENCE_EXTREME = 0.75
 CONFIDENCE_HIGH = 0.55
 
 
+@register_agent("funding_rate_contrarian")
 class FundingRateAgent(Agent):
     """Generates contrarian signals based on extreme funding rates."""
 

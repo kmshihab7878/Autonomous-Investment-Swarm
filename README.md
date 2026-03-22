@@ -73,14 +73,15 @@ Prometheus metrics, Grafana dashboards, Alertmanager alerts, structured JSON log
 
 | Metric | Value |
 |--------|-------|
-| Source files | 126 Python modules |
-| Lines of code | 15,093 |
-| Test suite | 1,011 tests (unit + integration) |
+| Source files | 128 Python modules |
+| Lines of code | 15,766 |
+| Test suite | 1,095 tests (unit + integration + property-based) |
 | Coverage | 89% |
-| Doc pages | 35 (MkDocs Material) |
+| Doc pages | 42 (MkDocs Material + ADRs) |
 | Exchanges | 5 (Aster, Binance, Coinbase, Bybit, IB) |
 | CI matrix | Python 3.10, 3.11, 3.12 |
 | Type safety | mypy strict + Pydantic v2 frozen models |
+| Dependencies | Locked (`uv.lock`) for reproducible builds |
 | License | Apache 2.0 |
 
 ## Architecture
@@ -148,14 +149,14 @@ graph TD
 
 ```
 src/aiswarm/
-├── agents/         # Strategy agents (momentum, funding rate)
+├── agents/         # Strategy agents with dynamic registry (@register_agent)
 ├── api/            # FastAPI control plane (auth, routes, Prometheus)
 ├── backtest/       # Backtesting engine, adapters, data loader
 ├── bootstrap.py    # Config → component graph wiring
 ├── data/           # EventStore (SQLite), market data providers
 ├── exchange/       # Multi-exchange abstraction layer
 │   └── providers/  # Aster, Binance, Coinbase, Bybit, Interactive Brokers
-├── execution/      # Order executor, order store, fill tracker
+├── execution/      # Order executor, order store, fill tracker, slippage models
 ├── intelligence/   # Alpha Intelligence Engine (scanner, profiler, classifier, follower)
 ├── integrations/   # TradingView webhooks, portfolio trackers, tax export
 ├── loop/           # Autonomous trading loop (60s cycle)
@@ -164,7 +165,7 @@ src/aiswarm/
 ├── orchestration/  # Coordinator, arbitration, shared memory
 ├── portfolio/      # Allocator, exposure manager
 ├── quant/          # Kelly criterion, risk metrics, drift detection
-├── resilience/     # Circuit breaker, rate limiter, graceful shutdown
+├── resilience/     # Circuit breaker, rate limiter, retry with backoff, graceful shutdown
 ├── risk/           # Risk engine, kill switch, drawdown, leverage checks
 ├── session/        # Session lifecycle management
 ├── types/          # Pydantic domain models (Signal, Order, Portfolio)
@@ -231,7 +232,7 @@ Exchange routing is config-driven via `config/exchanges.yaml`. See [Multi-Exchan
 | **Audit trail** | Append-only event store + decision log | None |
 | **Type safety** | mypy strict, Pydantic v2 frozen models, PEP 561 typed | Partial or none |
 | **Alpha intelligence** | Scans top traders, profiles strategies, generates follow signals | None |
-| **Testing** | 1,011 tests (unit + integration), 89% coverage, CI matrix | Minimal |
+| **Testing** | 1,095 tests (unit + integration + property-based), 89% coverage, CI matrix | Minimal |
 | **Documentation** | 35-page MkDocs site with architecture diagrams | README only |
 | **API** | FastAPI with OpenAPI/Swagger/ReDoc auto-generated | None or basic |
 
@@ -258,6 +259,8 @@ make check
 pytest tests/                                              # All tests (unit + integration)
 pytest tests/unit/ --cov=src/aiswarm --cov-fail-under=83   # Unit tests with coverage
 pytest tests/integration/                                   # Integration tests
+pytest tests/benchmarks/ --benchmark-only                   # Performance benchmarks
+HYPOTHESIS_PROFILE=ci pytest tests/unit/test_properties.py  # Property-based tests (200 examples)
 ruff check src/ tests/                                      # Lint
 ruff format --check src/ tests/                             # Format check
 mypy src/aiswarm/ --ignore-missing-imports                  # Type check

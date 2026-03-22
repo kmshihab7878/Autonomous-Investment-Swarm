@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiswarm.agents.base import Agent
+from aiswarm.agents.registry import register_agent
 from aiswarm.data.providers.aster import AsterDataProvider, OHLCV
 from aiswarm.types.market import MarketRegime, Signal
 from aiswarm.utils.ids import new_id
@@ -44,6 +45,7 @@ def _trend_consistency(candles: list[OHLCV], period: int) -> float:
     return up_closes / len(recent)
 
 
+@register_agent("momentum_ma_crossover")
 class MomentumAgent(Agent):
     """Generates momentum signals from OHLCV price data."""
 

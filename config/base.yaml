@@ -5,3 +5,6 @@ audit:
 orchestration:
   arbitration_mode: weighted_voting
   required_risk_approval: true
+agents:
+  - momentum_ma_crossover
+  - funding_rate_contrarian
