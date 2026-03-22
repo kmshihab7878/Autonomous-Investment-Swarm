@@ -57,7 +57,7 @@ def _compute_delay(
     jitter: bool,
 ) -> float:
     """Compute delay with exponential backoff and optional jitter."""
-    delay = min(backoff_base * (2 ** (attempt - 1)), backoff_max)
+    delay: float = min(backoff_base * (2 ** (attempt - 1)), backoff_max)
     if jitter:
         delay = delay * (0.5 + random.random() * 0.5)  # noqa: S311
     return delay
