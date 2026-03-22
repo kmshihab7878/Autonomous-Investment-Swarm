@@ -138,7 +138,14 @@ def discover_agents() -> None:
 
     agent_modules = [
         "aiswarm.agents.strategy.momentum_agent",
+        "aiswarm.agents.strategy.mean_reversion_agent",
+        "aiswarm.agents.strategy.volatility_breakout_agent",
+        "aiswarm.agents.strategy.grid_agent",
+        "aiswarm.agents.strategy.vwap_reversion_agent",
+        "aiswarm.agents.strategy.rsi_divergence_agent",
+        "aiswarm.agents.strategy.pairs_agent",
         "aiswarm.agents.market_intelligence.funding_rate_agent",
+        "aiswarm.agents.market_intelligence.sentiment_agent",
     ]
 
     for module_name in agent_modules:
