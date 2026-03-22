@@ -146,6 +146,7 @@ def discover_agents() -> None:
         "aiswarm.agents.strategy.pairs_agent",
         "aiswarm.agents.market_intelligence.funding_rate_agent",
         "aiswarm.agents.market_intelligence.sentiment_agent",
+        "aiswarm.agents.market_intelligence.regime_detector",
     ]
 
     for module_name in agent_modules:
