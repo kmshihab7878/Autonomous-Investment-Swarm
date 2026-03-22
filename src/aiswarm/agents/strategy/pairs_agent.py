@@ -28,7 +28,9 @@ def _compute_spread_zscore(
     """Compute z-score of the price ratio spread."""
     if len(prices_a) < lookback or len(prices_b) < lookback:
         return None
-    ratios: list[float] = [a / b for a, b in zip(prices_a[-lookback:], prices_b[-lookback:]) if b != 0]
+    ratios: list[float] = [
+        a / b for a, b in zip(prices_a[-lookback:], prices_b[-lookback:]) if b != 0
+    ]
     if len(ratios) < lookback:
         return None
     mean: float = sum(ratios) / len(ratios)
