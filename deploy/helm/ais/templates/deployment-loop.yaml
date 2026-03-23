@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ais.fullname" . }}-loop
+  labels:
+    app.kubernetes.io/component: loop
+    {{- include "ais.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.loop }}
+  strategy:
+    type: Recreate  # Singleton: never run two loops simultaneously
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: loop
+      {{- include "ais.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: loop
+        {{- include "ais.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "ais.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: loop
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: APP_TARGET
+              value: ais-loop
+            - name: AIS_EXECUTION_MODE
+              value: {{ .Values.loop.executionMode | quote }}
+            - name: AIS_RISK_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ais.fullname" . }}-secrets
+                  key: hmac-secret
+            - name: REDIS_URL
+              value: {{ .Values.redis.url | quote }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.loop.metricsPort }}
+          resources:
+            {{- toYaml .Values.loop.resources | nindent 12 }}

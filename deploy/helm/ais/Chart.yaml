@@ -1,0 +1,14 @@
+apiVersion: v2
+name: ais
+description: Autonomous Investment Swarm — risk-gated autonomous trading
+type: application
+version: 0.1.0
+appVersion: "1.2.0"
+keywords:
+  - trading
+  - autonomous
+  - multi-agent
+  - risk-management
+maintainers:
+  - name: Khaled Shihab
+    email: khaledshihab73@gmail.com
