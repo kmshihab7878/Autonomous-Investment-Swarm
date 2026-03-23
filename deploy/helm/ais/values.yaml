@@ -1,0 +1,84 @@
+# Default values for AIS Helm chart
+
+replicaCount:
+  api: 1
+  loop: 1  # Must be 1 (singleton trading loop)
+
+image:
+  repository: ghcr.io/kmshihab7878/ais
+  pullPolicy: IfNotPresent
+  tag: ""  # Overridden by appVersion
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# --- AIS API ---
+api:
+  port: 8000
+  metricsPort: 9001
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# --- AIS Trading Loop ---
+loop:
+  metricsPort: 9002
+  executionMode: paper  # paper | shadow | live
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# --- Secrets ---
+secrets:
+  hmacSecret: ""  # Required: AIS_RISK_HMAC_SECRET
+  apiKey: ""      # Required for live mode
+
+# --- Redis ---
+redis:
+  enabled: true
+  url: "redis://ais-redis:6379/0"
+
+# --- Service ---
+service:
+  type: ClusterIP
+  port: 8000
+
+# --- Ingress ---
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: ais.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# --- Monitoring ---
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  namespace: ""
+
+# --- Pod Disruption Budget ---
+pdb:
+  enabled: true
+  minAvailable: 1
+
+# --- Network Policy ---
+networkPolicy:
+  enabled: false

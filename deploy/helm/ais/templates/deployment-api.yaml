@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ais.fullname" . }}-api
+  labels:
+    app.kubernetes.io/component: api
+    {{- include "ais.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.api }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api
+      {{- include "ais.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: api
+        {{- include "ais.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "ais.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: APP_TARGET
+              value: ais
+            - name: AIS_API_HOST
+              value: "0.0.0.0"
+            - name: AIS_API_PORT
+              value: "{{ .Values.api.port }}"
+            - name: AIS_RISK_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ais.fullname" . }}-secrets
+                  key: hmac-secret
+            - name: REDIS_URL
+              value: {{ .Values.redis.url | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.port }}
+            - name: metrics
+              containerPort: {{ .Values.api.metricsPort }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
