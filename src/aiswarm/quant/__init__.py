@@ -1,4 +1,4 @@
-"""Quantitative methods extracted from FID research system.
+"""Quantitative methods extracted from AIS research system.
 
 Domain-agnostic implementations of:
 - Kelly criterion position sizing
