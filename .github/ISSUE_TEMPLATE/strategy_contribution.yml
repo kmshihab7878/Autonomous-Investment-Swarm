@@ -1,0 +1,63 @@
+name: Strategy Contribution
+description: Propose a new trading strategy agent for AIS
+title: "[Strategy] "
+labels: ["strategy", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing a strategy! Please fill in the details below.
+  - type: input
+    id: strategy_name
+    attributes:
+      label: Strategy Name
+      description: The @register_agent name (e.g., "momentum_ma_crossover")
+      placeholder: my_strategy_name
+    validations:
+      required: true
+  - type: dropdown
+    id: strategy_type
+    attributes:
+      label: Strategy Type
+      options:
+        - Trend Following
+        - Mean Reversion
+        - Momentum
+        - Volatility
+        - Statistical Arbitrage
+        - Market Making
+        - Sentiment
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Strategy Description
+      description: Explain the trading logic, entry/exit conditions, and expected market conditions.
+      placeholder: |
+        This strategy...
+        Entry: when...
+        Exit: when...
+        Works best in: ...
+    validations:
+      required: true
+  - type: textarea
+    id: backtest_results
+    attributes:
+      label: Backtest Results (if available)
+      description: Share any backtest metrics (Sharpe, max drawdown, win rate, etc.)
+      placeholder: |
+        Sharpe: 1.5
+        Max Drawdown: 8%
+        Win Rate: 55%
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Contribution Checklist
+      options:
+        - label: Strategy follows the Agent ABC pattern (analyze, propose, validate)
+        - label: Uses @register_agent decorator
+        - label: Includes unit tests
+        - label: Confidence values are in [0.35, 0.90] range
+        - label: Signal includes a meaningful thesis string
