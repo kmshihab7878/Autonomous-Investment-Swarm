@@ -16,7 +16,7 @@ Usage::
 from __future__ import annotations
 
 import importlib
-import sys
+import importlib.util
 from pathlib import Path
 from typing import Any
 
@@ -32,18 +32,14 @@ def discover_entry_point_plugins() -> list[type[Plugin]]:
     """Discover plugins registered via Python entry points."""
     plugins: list[type[Plugin]] = []
 
-    if sys.version_info >= (3, 12):
-        from importlib.metadata import entry_points
+    from importlib.metadata import entry_points
 
-        eps = entry_points(group=ENTRY_POINT_GROUP)
-    else:
-        try:
-            from importlib.metadata import entry_points
-
-            all_eps = entry_points()
-            eps = all_eps.get(ENTRY_POINT_GROUP, [])  # type: ignore[assignment]
-        except Exception:
-            eps = []
+    try:
+        eps: list[Any] = list(entry_points(group=ENTRY_POINT_GROUP))
+    except TypeError:
+        # Python < 3.12 fallback: entry_points() returns a dict
+        all_eps = entry_points()
+        eps = list(getattr(all_eps, "get", lambda *a: [])(ENTRY_POINT_GROUP, []))
 
     for ep in eps:
         try:
