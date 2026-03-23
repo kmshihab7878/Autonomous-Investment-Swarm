@@ -2,7 +2,7 @@
 
 ## Overview
 
-AIS includes a suite of quantitative tools for position sizing, risk measurement, and distribution drift detection. These are domain-agnostic implementations extracted from the FID research system, located in `src/aiswarm/quant/`.
+AIS includes a suite of quantitative tools for position sizing, risk measurement, and distribution drift detection. These are domain-agnostic implementations extracted from the AIS research system, located in `src/aiswarm/quant/`.
 
 ## Components
 
