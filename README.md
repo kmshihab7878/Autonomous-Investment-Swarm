@@ -73,15 +73,17 @@ Prometheus metrics, Grafana dashboards, Alertmanager alerts, structured JSON log
 
 | Metric | Value |
 |--------|-------|
-| Source files | 128 Python modules |
-| Lines of code | 15,766 |
-| Test suite | 1,095 tests (unit + integration + property-based) |
+| Source files | 147 Python modules |
+| Lines of code | 18,278 |
+| Test suite | 1,273 tests (unit + integration + property-based + benchmarks) |
 | Coverage | 89% |
-| Doc pages | 42 (MkDocs Material + ADRs) |
+| Strategy agents | 10 built-in + plugin system for custom strategies |
 | Exchanges | 5 (Aster, Binance, Coinbase, Bybit, IB) |
+| Doc pages | 42 (MkDocs Material + 6 ADRs) |
 | CI matrix | Python 3.10, 3.11, 3.12 |
 | Type safety | mypy strict + Pydantic v2 frozen models |
 | Dependencies | Locked (`uv.lock`) for reproducible builds |
+| Deployment | Docker Compose + Kubernetes Helm chart |
 | License | Apache 2.0 |
 
 ## Architecture
@@ -157,7 +159,7 @@ src/aiswarm/
 ├── exchange/       # Multi-exchange abstraction layer
 │   └── providers/  # Aster, Binance, Coinbase, Bybit, Interactive Brokers
 ├── execution/      # Order executor, order store, fill tracker, slippage models
-├── intelligence/   # Alpha Intelligence Engine (scanner, profiler, classifier, follower)
+├── intelligence/   # Alpha Intelligence Engine + HMM regime detection
 ├── integrations/   # TradingView webhooks, portfolio trackers, tax export
 ├── loop/           # Autonomous trading loop (60s cycle)
 ├── mandates/       # Governance: mandate registry, validator
@@ -168,6 +170,8 @@ src/aiswarm/
 ├── resilience/     # Circuit breaker, rate limiter, retry with backoff, graceful shutdown
 ├── risk/           # Risk engine, kill switch, drawdown, leverage checks
 ├── session/        # Session lifecycle management
+├── observability/  # OpenTelemetry tracing (optional)
+├── plugins/        # Plugin system (strategy, data source, risk guard, integration)
 ├── types/          # Pydantic domain models (Signal, Order, Portfolio)
 └── utils/          # Secrets provider, logging, time utilities
 ```
@@ -205,6 +209,16 @@ docker compose up --build
 | Grafana | [localhost:3000](http://localhost:3000) | Dashboards |
 | Alertmanager | [localhost:9093](http://localhost:9093) | Alert routing |
 
+**Kubernetes (production):**
+
+```bash
+helm install ais deploy/helm/ais/ \
+  --set secrets.hmacSecret=$(python -c "import secrets; print(secrets.token_urlsafe(32))") \
+  --set loop.executionMode=paper
+```
+
+**GitHub Codespaces (zero setup):** Open in Codespaces via `.devcontainer/` — auto-installs dependencies, pre-commit hooks, and forwards ports.
+
 See the [full quickstart guide](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/getting-started/quickstart/) for detailed walkthrough.
 
 ## Supported Exchanges
@@ -219,22 +233,44 @@ See the [full quickstart guide](https://kmshihab7878.github.io/Autonomous-Invest
 
 Exchange routing is config-driven via `config/exchanges.yaml`. See [Multi-Exchange Setup](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/guides/multi-exchange/).
 
-## How It Differs
+## How AIS Compares
 
-| | AIS | Typical Trading Bot |
-|---|---|---|
-| **Risk validation** | HMAC-signed tokens, fail-closed, key rotation | Basic stop-loss |
-| **Architecture** | Multi-agent weighted arbitration | Single strategy |
-| **Governance** | Mandate system with allocation caps | None |
-| **Execution safety** | 3 modes, same pipeline | Live-only |
-| **Observability** | Prometheus + Grafana + Alertmanager + reconciliation | Log files |
-| **Exchange support** | 5 exchanges, unified abstraction, config-driven routing | 1-2 hardcoded |
-| **Audit trail** | Append-only event store + decision log | None |
-| **Type safety** | mypy strict, Pydantic v2 frozen models, PEP 561 typed | Partial or none |
-| **Alpha intelligence** | Scans top traders, profiles strategies, generates follow signals | None |
-| **Testing** | 1,095 tests (unit + integration + property-based), 89% coverage, CI matrix | Minimal |
-| **Documentation** | 35-page MkDocs site with architecture diagrams | README only |
-| **API** | FastAPI with OpenAPI/Swagger/ReDoc auto-generated | None or basic |
+<table>
+<tr><th>Feature</th><th>AIS</th><th>Freqtrade</th><th>Hummingbot</th><th>Jesse</th><th>Qlib</th></tr>
+<tr><td><strong>HMAC risk gating</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Alpha Intelligence</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>Partial</td></tr>
+<tr><td><strong>HMM regime detection</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Mandate governance</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Plugin system</strong></td><td>Yes</td><td>-</td><td>Partial</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Walk-forward + Monte Carlo</strong></td><td>Yes</td><td>Partial</td><td>-</td><td>Partial</td><td>Yes</td></tr>
+<tr><td><strong>Multi-exchange + multi-asset</strong></td><td>5 exchanges</td><td>20+ (CCXT)</td><td>30+ DEX</td><td>3</td><td>-</td></tr>
+<tr><td><strong>K8s Helm chart</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>OpenTelemetry</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Web dashboard</strong></td><td>Yes (WebSocket)</td><td>FreqUI</td><td>Yes</td><td>Yes</td><td>-</td></tr>
+<tr><td><strong>3 execution modes</strong></td><td>Paper/Shadow/Live</td><td>Paper/Live</td><td>Paper/Live</td><td>Paper/Live</td><td>Research only</td></tr>
+<tr><td><strong>Property-based tests</strong></td><td>Yes (Hypothesis)</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Session lifecycle</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Tax/compliance export</strong></td><td>CSV/Koinly/CoinTracker</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+</table>
+
+AIS combines cryptographic risk gating, AI-powered intelligence, mandate governance, and enterprise operations in a way no single competitor matches.
+
+## Built-in Strategies (10)
+
+| Strategy | Agent | Signal Logic |
+|----------|-------|-------------|
+| `momentum_ma_crossover` | MomentumAgent | Fast/slow SMA crossover with trend consistency |
+| `funding_rate_contrarian` | FundingRateAgent | Contrarian on extreme funding rates |
+| `mean_reversion_bollinger` | MeanReversionAgent | Bollinger Bands + RSI oversold/overbought |
+| `volatility_breakout` | VolatilityBreakoutAgent | Keltner Channel breaks + ATR expansion |
+| `rsi_divergence` | RSIDivergenceAgent | Price/RSI divergence reversal detection |
+| `vwap_reversion` | VWAPReversionAgent | Mean-reversion to Volume-Weighted Average Price |
+| `grid_trading` | GridAgent | Systematic contrarian at regular price intervals |
+| `pairs_stat_arb` | PairsAgent | Z-score of correlated pair spreads |
+| `sentiment_contrarian` | SentimentAgent | Contrarian to Fear & Greed extremes |
+| `regime_hmm` | RegimeDetectorAgent | HMM market regime classification |
+
+All agents use `@register_agent` for config-driven activation. Add to `config/base.yaml` to enable.
 
 ## Example Output
 
@@ -287,7 +323,10 @@ Full documentation at **[kmshihab7878.github.io/Autonomous-Investment-Swarm](htt
 The [`examples/`](examples/) directory includes:
 
 - `paper_trading.env` — Minimal environment for paper trading
-- `mean_reversion_agent.py` — Example custom strategy agent (Bollinger Band mean reversion)
+- `mean_reversion_agent.py` — Example custom strategy agent
+- `backtest_walkforward.py` — Walk-forward optimization demo
+- `backtest_montecarlo.py` — Monte Carlo simulation demo
+- `plugins/simple_strategy.py` — Example plugin (SMA crossover)
 
 See the [Strategy Development Guide](https://kmshihab7878.github.io/Autonomous-Investment-Swarm/guides/strategy-development/) for a complete tutorial on building custom agents.
 
