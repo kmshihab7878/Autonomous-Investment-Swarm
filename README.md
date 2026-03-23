@@ -59,11 +59,14 @@ Paper (simulated), Shadow (read-only), Live (gated). **Same pipeline in all mode
 ### Multi-Exchange
 Unified abstraction across Aster DEX, Binance, Coinbase, Bybit, and Interactive Brokers with config-driven symbol routing via `ExchangeRegistry` and `SymbolRouter`.
 
-### Alpha Intelligence Engine
-Scans trades across all exchanges, profiles top performers, reverse-engineers their strategies, and generates signals from their behavior. Automated edge discovery.
+### Alpha Intelligence + HMM Regime Detection
+Scans trades across exchanges, profiles top performers, and generates follow signals. HMM-based regime detection classifies market state (risk-on, risk-off, transition, stressed) to adapt strategy weighting in real time.
+
+### Plugin System
+Extend AIS with custom strategies, data sources, risk guards, and integrations. Discover plugins via Python entry points or directory scanning. Four plugin types with full lifecycle hooks.
 
 ### Full Observability
-Prometheus metrics, Grafana dashboards, Alertmanager alerts, structured JSON logging, position reconciliation, and append-only SQLite event store for audit trail.
+Prometheus metrics, Grafana dashboards, Alertmanager alerts, OpenTelemetry tracing, real-time WebSocket dashboard, position reconciliation, and append-only event store for audit trail.
 
 </td>
 </tr>
@@ -92,12 +95,15 @@ Prometheus metrics, Grafana dashboards, Alertmanager alerts, structured JSON log
 graph TD
     subgraph Data Layer
         D[Market Data Providers]
+        BT[Backtesting Engine]
     end
 
     subgraph Intelligence Layer
         MI[Market Intelligence Agents]
-        ST[Strategy Agents]
+        ST[Strategy Agents — 10 built-in]
         AI[Alpha Intelligence Engine]
+        HMM[HMM Regime Detector]
+        PLG[Plugin System]
     end
 
     subgraph Orchestration Layer
@@ -110,40 +116,53 @@ graph TD
         PA[Portfolio Allocator]
         RE[Risk Engine]
         KS[Kill Switch]
+        SL[Slippage Models]
     end
 
     subgraph Execution Layer
         OMS[Order Management]
-        EX[Exchange Providers]
+        EX[Exchange Providers — 5 exchanges]
     end
 
     subgraph Observability
         MON[Prometheus Metrics]
+        OTEL[OpenTelemetry Tracing]
         REC[Position Reconciliation]
         EVT[Event Store]
+        DASH[Web Dashboard — WebSocket]
     end
 
     D --> MI
     D --> ST
     D --> AI
+    D --> HMM
+    BT --> ST
+    PLG --> ST
     MI --> ARB
     ST --> ARB
     AI --> ARB
+    HMM --> ARB
     ARB --> COORD
     COORD --> PA
     PA --> RE
-    RE -->|HMAC Token| OMS
+    RE --> SL
+    SL -->|HMAC Token| OMS
     RE -->|Veto| COORD
     KS -.->|Emergency Stop| OMS
     OMS --> EX
     EX --> MON
+    EX --> OTEL
     EX --> REC
     COORD --> EVT
     COORD <--> MEM
     RE <--> MEM
+    MON --> DASH
+    EVT --> DASH
 
     style RE fill:#e8eaf6,stroke:#5e35b1,stroke-width:2px
     style KS fill:#ffebee,stroke:#c62828,stroke-width:2px
+    style HMM fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style DASH fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
 ```
 
 <details>
