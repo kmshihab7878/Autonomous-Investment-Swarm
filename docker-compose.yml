@@ -85,13 +85,13 @@ services:
   pushgateway:
     image: prom/pushgateway:v1.9.0
     ports:
-      - "9091:9091"
+      - "127.0.0.1:9091:9091"
     restart: unless-stopped
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     restart: unless-stopped
@@ -99,7 +99,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.51.0
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - promdata:/prometheus
@@ -112,7 +112,7 @@ services:
   grafana:
     image: grafana/grafana:10.4.0
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:?Set GF_ADMIN_PASSWORD in .env}

@@ -137,7 +137,8 @@ def retry(
                     )
                     time.sleep(delay)
 
-            assert last_exc is not None
+            if last_exc is None:  # pragma: no cover — unreachable
+                raise RuntimeError("retry loop exited without exception")
             raise RetryExhausted(max_attempts, last_exc)
 
         @functools.wraps(func)
@@ -190,7 +191,8 @@ def retry(
                     )
                     await asyncio.sleep(delay)
 
-            assert last_exc is not None
+            if last_exc is None:  # pragma: no cover — unreachable
+                raise RuntimeError("retry loop exited without exception")
             raise RetryExhausted(max_attempts, last_exc)
 
         if asyncio.iscoroutinefunction(func):

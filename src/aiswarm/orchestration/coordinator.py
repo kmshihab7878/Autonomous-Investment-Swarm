@@ -114,7 +114,8 @@ class Coordinator:
             return None
 
         approved_order = approval.order
-        assert approved_order is not None
+        if approved_order is None:
+            return None
 
         # Staging mode: hold order for operator review
         if self.staging_enabled:

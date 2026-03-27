@@ -297,7 +297,8 @@ class AutoresearchLoop:
     def _resolve_trial(self) -> Modification:
         """Resolve an active trial: keep or revert based on Sharpe improvement."""
         mod = self._active_modification
-        assert mod is not None
+        if mod is None:
+            raise RuntimeError("_resolve_trial called with no active modification")
 
         # Get current Sharpe for the modified agent
         performances = self._darwinian.compute_performance()

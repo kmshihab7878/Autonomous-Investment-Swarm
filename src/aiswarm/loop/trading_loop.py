@@ -416,8 +416,8 @@ class TradingLoop:
         submitted directly to the executor. Each trigger is recorded as a
         risk event in SharedMemory and as a Prometheus counter increment.
         """
-        assert self.stop_loss_monitor is not None
-        assert self.memory.latest_snapshot is not None
+        if self.stop_loss_monitor is None or self.memory.latest_snapshot is None:
+            return
 
         close_orders = self.stop_loss_monitor.check_positions(self.memory.latest_snapshot)
 

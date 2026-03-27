@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict
 
 from aiswarm.types.portfolio import PortfolioSnapshot
 from aiswarm.types.risk import RiskEvent
+
+_MAX_RISK_EVENTS = 500
 
 
 @dataclass
@@ -31,9 +33,9 @@ class SharedMemory:
     rolling_drawdown: float = 0.0
     current_leverage: float = 0.0
     peak_nav: float = 0.0
-    risk_events: list[RiskEvent] = field(default_factory=list)
-    metadata: Dict[str, str] = field(default_factory=dict)
-    mandate_trackers: Dict[str, MandatePnLTracker] = field(default_factory=dict)
+    risk_events: deque[RiskEvent] = field(default_factory=lambda: deque(maxlen=_MAX_RISK_EVENTS))
+    metadata: dict[str, str] = field(default_factory=dict)
+    mandate_trackers: dict[str, MandatePnLTracker] = field(default_factory=dict)
 
     def update_snapshot(self, snapshot: PortfolioSnapshot) -> None:
         self.latest_snapshot = snapshot
