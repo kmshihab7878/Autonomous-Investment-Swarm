@@ -68,7 +68,7 @@ class _ControlState:
                 if val:
                     return SystemState(val)
             except Exception:
-                pass
+                logger.warning("Failed to read control state from Redis", exc_info=True)
         return self._fallback_state
 
     @property
@@ -79,7 +79,7 @@ class _ControlState:
                 val: str | None = r.get(REDIS_PAUSED_AT_KEY)
                 return val
             except Exception:
-                pass
+                logger.warning("Failed to read paused_at from Redis", exc_info=True)
         return self._fallback_paused_at
 
     @property
@@ -90,7 +90,7 @@ class _ControlState:
                 val: str | None = r.get(REDIS_KILL_REASON_KEY)
                 return val
             except Exception:
-                pass
+                logger.warning("Failed to read kill_reason from Redis", exc_info=True)
         return self._fallback_kill_reason
 
     def pause(self) -> None:
@@ -103,7 +103,7 @@ class _ControlState:
                 r.set(REDIS_CONTROL_KEY, SystemState.PAUSED.value)
                 r.set(REDIS_PAUSED_AT_KEY, ts)
             except Exception:
-                logger.error("Failed to write pause state to Redis")
+                logger.error("Failed to write pause state to Redis", exc_info=True)
 
     def resume(self) -> None:
         self._fallback_state = SystemState.RUNNING
@@ -114,7 +114,7 @@ class _ControlState:
                 r.set(REDIS_CONTROL_KEY, SystemState.RUNNING.value)
                 r.delete(REDIS_PAUSED_AT_KEY)
             except Exception:
-                logger.error("Failed to write resume state to Redis")
+                logger.error("Failed to write resume state to Redis", exc_info=True)
 
     def kill(self, reason: str) -> None:
         self._fallback_state = SystemState.KILLED
@@ -125,7 +125,7 @@ class _ControlState:
                 r.set(REDIS_CONTROL_KEY, SystemState.KILLED.value)
                 r.set(REDIS_KILL_REASON_KEY, reason)
             except Exception:
-                logger.error("Failed to write kill state to Redis")
+                logger.error("Failed to write kill state to Redis", exc_info=True)
 
     @property
     def is_trading_allowed(self) -> bool:

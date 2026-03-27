@@ -108,7 +108,7 @@ class SessionManager:
             payload = json.dumps(self._session_to_dict(self._current))
             self._redis.set(REDIS_SESSION_KEY, payload)
         except Exception:
-            logger.error("Failed to persist session state to Redis")
+            logger.error("Failed to persist session state to Redis", exc_info=True)
 
     def _restore_from_redis(self) -> None:
         """Attempt to restore session state from Redis on startup."""
@@ -131,7 +131,9 @@ class SessionManager:
                 },
             )
         except Exception:
-            logger.error("Failed to restore session state from Redis — starting fresh")
+            logger.error(
+                "Failed to restore session state from Redis — starting fresh", exc_info=True
+            )
 
     # --- Lifecycle transitions -----------------------------------------------
 

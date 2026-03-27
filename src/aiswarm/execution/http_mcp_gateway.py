@@ -27,6 +27,9 @@ class HTTPMCPGateway:
     Prometheus metric labels and circuit breaker identification.
     """
 
+    _MAX_CALL_HISTORY = 1000
+    _REDACT_KEYS = frozenset({"account_id", "api_key", "api_secret", "password", "token"})
+
     def __init__(
         self,
         server_url: str,
@@ -84,8 +87,11 @@ class HTTPMCPGateway:
             elapsed = time.monotonic() - start
             m.EXCHANGE_LATENCY.labels(exchange=self.exchange_name, tool=tool_name).observe(elapsed)
 
-            record = MCPCallRecord(tool_name=tool_name, params=params, response=result)
+            safe_params = {k: ("***" if k in self._REDACT_KEYS else v) for k, v in params.items()}
+            record = MCPCallRecord(tool_name=tool_name, params=safe_params, response=result)
             self.call_history.append(record)
+            if len(self.call_history) > self._MAX_CALL_HISTORY:
+                self.call_history = self.call_history[-self._MAX_CALL_HISTORY :]
 
             logger.info(
                 "MCP call",
