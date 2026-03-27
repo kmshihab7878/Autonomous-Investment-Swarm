@@ -1,6 +1,10 @@
+import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from typing import Any, Callable
+
+from fastapi import Depends, FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -14,6 +18,8 @@ from aiswarm.api.routes_reports import router as reports_router
 from aiswarm.api.routes_session import router as session_router
 from aiswarm.api.routes_ws import router as ws_router
 
+_is_live = os.environ.get("AIS_EXECUTION_MODE", "").lower() == "live"
+
 app = FastAPI(
     title="Autonomous Investment Swarm",
     version=__version__,
@@ -22,10 +28,34 @@ app = FastAPI(
         "Every order requires an HMAC-signed approval token from the risk engine."
     ),
     license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=None if _is_live else "/docs",
+    redoc_url=None if _is_live else "/redoc",
+    openapi_url=None if _is_live else "/openapi.json",
 )
+
+# CORS — restrict origins in production, permissive in dev
+_cors_origins = os.environ.get("AIS_CORS_ORIGINS", "").split(",")
+_cors_origins = [o.strip() for o in _cors_origins if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins or (["*"] if not _is_live else []),
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization"],
+)
+
+
+# Security headers middleware
+@app.middleware("http")
+async def security_headers(request: Request, call_next: Callable[[Request], Any]) -> Response:
+    """Add security headers to all HTTP responses."""
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if _is_live:
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
+
 
 # Static files (dashboard)
 _static_dir = Path(__file__).parent / "static"

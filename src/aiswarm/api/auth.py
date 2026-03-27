@@ -52,6 +52,10 @@ async def require_api_key(
         )
 
     if not secrets.compare_digest(credentials.credentials, expected):
+        logger.warning(
+            "Authentication failed: invalid Bearer token",
+            extra={"extra_json": {"path": "api"}},
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid API key",

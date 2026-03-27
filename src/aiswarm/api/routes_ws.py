@@ -7,10 +7,12 @@ to connected dashboard clients via a lightweight pub/sub pattern.
 from __future__ import annotations
 
 import json
+import secrets
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from aiswarm.api.auth import _get_api_key
 from aiswarm.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +39,20 @@ async def broadcast(event_type: str, data: dict[str, Any]) -> None:
 
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
-    """WebSocket connection for real-time dashboard updates."""
+    """WebSocket connection for real-time dashboard updates.
+
+    Requires a valid API key via query parameter ``token`` when
+    ``AIS_API_KEY`` is configured. Connections without a valid token
+    are rejected with close code 4001.
+    """
+    expected = _get_api_key()
+    if expected:
+        token = ws.query_params.get("token", "")
+        if not token or not secrets.compare_digest(token, expected):
+            logger.warning("WebSocket auth failed — invalid or missing token")
+            await ws.close(code=4001)
+            return
+
     await ws.accept()
     _clients.add(ws)
     logger.info(

@@ -242,7 +242,7 @@ def _get_redis_client() -> Any:
         client.ping()
         return client
     except Exception:
-        logger.warning("Redis unavailable — session state will be in-memory only")
+        logger.warning("Redis unavailable — session state will be in-memory only", exc_info=True)
         return None
 
 

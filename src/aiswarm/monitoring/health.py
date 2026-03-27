@@ -44,6 +44,7 @@ def _check_redis() -> str:
         client.ping()
         return "connected"
     except Exception:
+        logger.debug("Redis health check failed", exc_info=True)
         return "error"
 
 
@@ -54,6 +55,7 @@ def _check_database() -> str:
             return "connected"
         return "not_initialized"
     except Exception:
+        logger.debug("Database health check failed", exc_info=True)
         return "error"
 
 
@@ -71,4 +73,5 @@ def _check_loop_heartbeat() -> str:
             return "healthy"
         return f"stale ({int(age)}s ago)"
     except Exception:
+        logger.debug("Loop heartbeat check failed", exc_info=True)
         return "unknown"
