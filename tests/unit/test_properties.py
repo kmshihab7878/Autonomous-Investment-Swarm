@@ -127,9 +127,9 @@ class TestKellyProperties:
         """abs(half_kelly) <= abs(kelly_fraction) always -- half-Kelly is more conservative."""
         full = kelly_fraction(p, r)
         half = half_kelly(p, r)
-        assert (
-            abs(half) <= abs(full) + 1e-12
-        ), f"|half_kelly|={abs(half)} > |kelly_fraction|={abs(full)} for p={p}, r={r}"
+        assert abs(half) <= abs(full) + 1e-12, (
+            f"|half_kelly|={abs(half)} > |kelly_fraction|={abs(full)} for p={p}, r={r}"
+        )
 
     @given(p=win_probs, r=payout_ratios_positive)
     def test_half_kelly_is_exactly_half(self, p: float, r: float) -> None:
@@ -184,9 +184,9 @@ class TestKellyProperties:
     ) -> None:
         """kelly_position_size never exceeds capital * max_position_pct."""
         size = kelly_position_size(p, r, capital, max_position_pct=max_pct)
-        assert (
-            size <= capital * max_pct + 1e-6
-        ), f"Position size {size} exceeds cap {capital * max_pct}"
+        assert size <= capital * max_pct + 1e-6, (
+            f"Position size {size} exceeds cap {capital * max_pct}"
+        )
         assert size >= 0.0, f"Position size cannot be negative: {size}"
 
     @given(p=win_probs, r=payout_ratios_any)
@@ -315,9 +315,9 @@ class TestVolumeWeightedSlippageProperties:
         est = model.estimate_bps(notional, orderbook_depth=depth)
 
         # Assert
-        assert (
-            min_bps <= est.bps <= max_bps
-        ), f"bps={est.bps} outside [{min_bps}, {max_bps}] for notional={notional}, depth={depth}"
+        assert min_bps <= est.bps <= max_bps, (
+            f"bps={est.bps} outside [{min_bps}, {max_bps}] for notional={notional}, depth={depth}"
+        )
 
     @given(
         notional=notionals,

@@ -71,6 +71,6 @@ class TestMetricsDefinitions:
         from aiswarm.monitoring import metrics as m
 
         metric_attrs = [attr for attr in dir(m) if attr.isupper() and not attr.startswith("_")]
-        assert (
-            len(metric_attrs) >= 27
-        ), f"Expected >=27 metrics, found {len(metric_attrs)}: {metric_attrs}"
+        assert len(metric_attrs) >= 27, (
+            f"Expected >=27 metrics, found {len(metric_attrs)}: {metric_attrs}"
+        )

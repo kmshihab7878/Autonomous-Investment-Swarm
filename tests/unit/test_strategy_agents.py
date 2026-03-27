@@ -923,9 +923,9 @@ class TestSentimentAgent:
         result = agent.analyze({"sentiment_score": score, "symbol": "BTCUSDT"})
         signal = result["signal"]
         if signal is not None:
-            assert (
-                0.35 <= signal.confidence <= 0.90
-            ), f"Confidence {signal.confidence} out of bounds for score={score}"
+            assert 0.35 <= signal.confidence <= 0.90, (
+                f"Confidence {signal.confidence} out of bounds for score={score}"
+            )
 
     # --- Strategy name ---
 

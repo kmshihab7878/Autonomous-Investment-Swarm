@@ -168,7 +168,7 @@ class CryptoFuturesGenerator:
         n = len(self._assets)
         if self._correlation.shape != (n, n):
             raise ValueError(
-                f"Correlation matrix shape {self._correlation.shape} " f"does not match {n} assets"
+                f"Correlation matrix shape {self._correlation.shape} does not match {n} assets"
             )
 
         # Compute Cholesky decomposition (lower triangular)
