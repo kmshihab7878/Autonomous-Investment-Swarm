@@ -6,6 +6,8 @@
 
 - [ ] Bug fix
 - [ ] New feature
+- [ ] New strategy agent
+- [ ] Plugin
 - [ ] Refactoring (no behavior change)
 - [ ] Documentation
 - [ ] Configuration / CI

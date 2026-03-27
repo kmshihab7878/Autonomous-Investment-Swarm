@@ -59,6 +59,15 @@ Paper (simulated), Shadow (read-only), Live (gated). **Same pipeline in all mode
 ### Multi-Exchange
 Unified abstraction across Aster DEX, Binance, Coinbase, Bybit, and Interactive Brokers with config-driven symbol routing via `ExchangeRegistry` and `SymbolRouter`.
 
+### Darwinian Agent Evolution
+Strategy weights evolve based on rolling Sharpe ratio performance. Top-quartile agents get boosted; bottom-quartile agents decay. Autoresearch proposes parameter mutations, trials them, and keeps improvements automatically.
+
+### JANUS Meta-Weighting
+Multi-cohort blending layer sits above arbitration. Different weight configurations trained on different market periods are blended based on detected regime. Disagreement between cohorts triggers protective scaling.
+
+### Forward Simulation
+Monte Carlo price path generation with Cholesky-correlated crypto assets, 5 scenario branches (base, bull, bear, liquidation cascade, regulatory shock), and reflexivity feedback loop detection across 5 crypto-specific mechanisms.
+
 ### Alpha Intelligence + HMM Regime Detection
 Scans trades across exchanges, profiles top performers, and generates follow signals. HMM-based regime detection classifies market state (risk-on, risk-off, transition, stressed) to adapt strategy weighting in real time.
 
@@ -76,11 +85,11 @@ Prometheus metrics, Grafana dashboards, Alertmanager alerts, OpenTelemetry traci
 
 | Metric | Value |
 |--------|-------|
-| Source files | 147 Python modules |
-| Lines of code | 18,278 |
-| Test suite | 1,273 tests (unit + integration + property-based + benchmarks) |
+| Source files | 155 Python modules |
+| Lines of code | 20,400+ |
+| Test suite | 1,365 tests (unit + integration + property-based + benchmarks) |
 | Coverage | 89% |
-| Strategy agents | 10 built-in + plugin system for custom strategies |
+| Strategy agents | 10 built-in + Darwinian evolution + plugin system |
 | Exchanges | 5 (Aster, Binance, Coinbase, Bybit, IB) |
 | Doc pages | 42 (MkDocs Material + 6 ADRs) |
 | CI matrix | Python 3.10, 3.11, 3.12 |
@@ -106,7 +115,16 @@ graph TD
         PLG[Plugin System]
     end
 
+    subgraph Evolution Layer
+        DW[Darwinian Weight Manager]
+        AR[Autoresearch Loop]
+        SIM[Simulation Engine]
+        FG[Futures Generator — Monte Carlo]
+        RFX[Reflexivity Detector]
+    end
+
     subgraph Orchestration Layer
+        JAN[JANUS Meta-Weighting]
         ARB[Weighted Arbitration]
         COORD[Coordinator]
         MEM[Shared Memory]
@@ -136,12 +154,19 @@ graph TD
     D --> ST
     D --> AI
     D --> HMM
+    D --> FG
     BT --> ST
     PLG --> ST
+    FG --> SIM
+    RFX --> SIM
+    SIM --> DW
+    DW --> ARB
+    AR --> DW
     MI --> ARB
     ST --> ARB
     AI --> ARB
-    HMM --> ARB
+    HMM --> JAN
+    JAN --> ARB
     ARB --> COORD
     COORD --> PA
     PA --> RE
@@ -163,6 +188,9 @@ graph TD
     style KS fill:#ffebee,stroke:#c62828,stroke-width:2px
     style HMM fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     style DASH fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style DW fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style JAN fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style SIM fill:#e0f7fa,stroke:#00838f,stroke-width:2px
 ```
 
 <details>
@@ -175,6 +203,7 @@ src/aiswarm/
 ├── backtest/       # Backtesting engine, adapters, data loader
 ├── bootstrap.py    # Config → component graph wiring
 ├── data/           # EventStore (SQLite), market data providers
+├── evolution/      # Darwinian agent weighting, autoresearch self-improvement
 ├── exchange/       # Multi-exchange abstraction layer
 │   └── providers/  # Aster, Binance, Coinbase, Bybit, Interactive Brokers
 ├── execution/      # Order executor, order store, fill tracker, slippage models
@@ -183,12 +212,13 @@ src/aiswarm/
 ├── loop/           # Autonomous trading loop (60s cycle)
 ├── mandates/       # Governance: mandate registry, validator
 ├── monitoring/     # Prometheus metrics, alerts, reconciliation
-├── orchestration/  # Coordinator, arbitration, shared memory
+├── orchestration/  # Coordinator, arbitration, shared memory, JANUS meta-weighting
 ├── portfolio/      # Allocator, exposure manager
 ├── quant/          # Kelly criterion, risk metrics, drift detection
 ├── resilience/     # Circuit breaker, rate limiter, retry with backoff, graceful shutdown
 ├── risk/           # Risk engine, kill switch, drawdown, leverage checks
 ├── session/        # Session lifecycle management
+├── simulation/     # Forward scenario testing, correlated price paths, reflexivity
 ├── observability/  # OpenTelemetry tracing (optional)
 ├── plugins/        # Plugin system (strategy, data source, risk guard, integration)
 ├── types/          # Pydantic domain models (Signal, Order, Portfolio)
@@ -257,6 +287,10 @@ Exchange routing is config-driven via `config/exchanges.yaml`. See [Multi-Exchan
 <table>
 <tr><th>Feature</th><th>AIS</th><th>Freqtrade</th><th>Hummingbot</th><th>Jesse</th><th>Qlib</th></tr>
 <tr><td><strong>HMAC risk gating</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Darwinian agent evolution</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Autoresearch self-improvement</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td><strong>Forward simulation + reflexivity</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>Partial</td></tr>
+<tr><td><strong>Multi-cohort meta-weighting</strong></td><td>JANUS</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
 <tr><td><strong>Alpha Intelligence</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>Partial</td></tr>
 <tr><td><strong>HMM regime detection</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
 <tr><td><strong>Mandate governance</strong></td><td>Yes</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>

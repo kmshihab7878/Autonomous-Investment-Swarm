@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aiswarm.agents.base import Agent
+from aiswarm.evolution.autoresearch import AutoresearchLoop
+from aiswarm.evolution.darwinian import DarwinianWeightManager
 from aiswarm.exchange.provider import ExchangeProvider
 from aiswarm.execution.account_setup import AccountSetupService
 from aiswarm.execution.fill_tracker import FillTracker
@@ -25,6 +27,7 @@ from aiswarm.monitoring import metrics as m
 from aiswarm.monitoring.alerts import AlertDispatcher
 from aiswarm.monitoring.reconciliation import ReconciliationLoop
 from aiswarm.orchestration.coordinator import Coordinator
+from aiswarm.orchestration.janus import JanusMetaWeighting
 from aiswarm.orchestration.memory import SharedMemory
 from aiswarm.resilience.shutdown import GracefulShutdown
 from aiswarm.risk.stop_loss import StopLossMonitor
@@ -91,6 +94,9 @@ class TradingLoop:
         config: LoopConfig | None = None,
         alert_dispatcher: AlertDispatcher | None = None,
         stop_loss_monitor: StopLossMonitor | None = None,
+        darwinian: DarwinianWeightManager | None = None,
+        autoresearch: AutoresearchLoop | None = None,
+        janus: JanusMetaWeighting | None = None,
     ) -> None:
         self.coordinator = coordinator
         self.live_executor = live_executor
@@ -108,6 +114,9 @@ class TradingLoop:
         self.state = LoopState()
         self.alert_dispatcher = alert_dispatcher or AlertDispatcher()
         self.stop_loss_monitor = stop_loss_monitor
+        self.darwinian = darwinian
+        self.autoresearch = autoresearch
+        self.janus = janus
 
     def run(self) -> LoopState:
         """Run the trading loop until shutdown or session end.

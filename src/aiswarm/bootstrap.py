@@ -20,6 +20,8 @@ import yaml
 from aiswarm.agents.base import Agent
 from aiswarm.agents.registry import build_from_registry, discover_agents
 from aiswarm.data.event_store import EventStore
+from aiswarm.evolution.darwinian import DarwinianWeightManager
+from aiswarm.evolution.autoresearch import AutoresearchLoop
 from aiswarm.data.providers.aster_config import AsterConfig
 from aiswarm.exchange.provider import ExchangeProvider
 from aiswarm.exchange.providers.aster import AsterExchangeProvider
@@ -41,6 +43,7 @@ from aiswarm.monitoring.alerts import AlertChannel, AlertDispatcher
 from aiswarm.monitoring.reconciliation import PositionReconciler, ReconciliationLoop
 from aiswarm.orchestration.arbitration import WeightedArbitration
 from aiswarm.orchestration.coordinator import Coordinator
+from aiswarm.orchestration.janus import JanusMetaWeighting
 from aiswarm.orchestration.memory import SharedMemory
 from aiswarm.portfolio.allocator import PortfolioAllocator
 from aiswarm.resilience.shutdown import GracefulShutdown
@@ -372,9 +375,49 @@ def bootstrap_from_config(
     # Restore checkpoint (G-007)
     _restore_checkpoint(event_store, memory)
 
-    # Coordinator
-    agent_weights = {a.agent_id: 1.0 for a in agents}
-    arbitration = WeightedArbitration(weights=agent_weights)
+    # Darwinian weight evolution (ATLAS-GIC inspired)
+    evolution_cfg = config.get("evolution", {})
+    darwinian = DarwinianWeightManager(
+        agent_ids=[a.agent_id for a in agents],
+        rolling_window_days=evolution_cfg.get("rolling_window_days", 60),
+        min_observations=evolution_cfg.get("min_observations", 5),
+        boost_factor=evolution_cfg.get("boost_factor", 1.05),
+        decay_factor=evolution_cfg.get("decay_factor", 0.95),
+    )
+
+    # Autoresearch self-improvement loop
+    autoresearch_cfg = config.get("autoresearch", {})
+    autoresearch = AutoresearchLoop(
+        darwinian=darwinian,
+        trial_cycles=autoresearch_cfg.get("trial_cycles", 5),
+        cooldown_cycles=autoresearch_cfg.get("cooldown_cycles", 10),
+        improvement_threshold=autoresearch_cfg.get("improvement_threshold", 0.05),
+    )
+    # Register agents with known tuning parameters
+    from aiswarm.agents.registry import _AGENT_REGISTRY
+    for agent in agents:
+        for strategy, (cls, _) in _AGENT_REGISTRY.items():
+            if isinstance(agent, cls):
+                autoresearch.register_agent(agent.agent_id, strategy)
+                break
+
+    # JANUS meta-weighting (optional, config-driven)
+    janus_cfg = config.get("janus", {})
+    janus: JanusMetaWeighting | None = None
+    cohort_ids = janus_cfg.get("cohorts", [])
+    if len(cohort_ids) >= 2:
+        janus = JanusMetaWeighting(
+            cohort_ids=cohort_ids,
+            regime_threshold=janus_cfg.get("regime_threshold", 0.15),
+            disagreement_penalty=janus_cfg.get("disagreement_penalty", 0.50),
+        )
+        logger.info(
+            "JANUS meta-weighting enabled",
+            extra={"extra_json": {"cohorts": cohort_ids}},
+        )
+
+    # Coordinator — uses Darwinian-managed weights instead of static 1.0
+    arbitration = WeightedArbitration(weights=darwinian.weights)
     portfolio_cfg = config.get("portfolio", {})
     allocator = PortfolioAllocator(
         target_weight=portfolio_cfg.get("max_single_position_weight", 0.02),
@@ -449,6 +492,9 @@ def bootstrap_from_config(
         config=loop_config,
         alert_dispatcher=alert_dispatcher,
         stop_loss_monitor=stop_loss_monitor,
+        darwinian=darwinian,
+        autoresearch=autoresearch,
+        janus=janus,
     )
 
     # Auto-start session in paper/shadow mode (no operator approval needed)
