@@ -1,2 +1,2 @@
 mkdocs-material>=9.5
-mkdocs-autorefs>=1.0
+mkdocs-autorefs>=1.4.4
